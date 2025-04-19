@@ -129,7 +129,9 @@ func (wm *WindowManager) Run(){
     }
 
     for _, window := range TopLevelWindows{
-        wm.Frame(window, true)
+        if !shouldIgnoreWindow(wm.conn, window){
+            wm.Frame(window, true)
+        }
     }
 
     err = xproto.UngrabServerChecked(wm.conn).Check()
@@ -304,7 +306,7 @@ func (wm *WindowManager) Run(){
                     if ev.Detail==cKeyCode{
                         SendWmDelete(wm.conn, wm.currWorkspace.frametoclient[ev.Child])
                         fmt.Println(wm.currWorkspace.frametoclient[ev.Child])
-                        wm.UnFrame(wm.currWorkspace.frametoclient[ev.Child])
+                        wm.UnFrame(wm.currWorkspace.frametoclient[ev.Child], false)
 
                     }else if ev.Detail == cKeyCode && ev.State&(xproto.ModMask1|xproto.ModMaskShift) == (xproto.ModMask1|xproto.ModMaskShift) {
                         // Mod + Shift + C → force close
@@ -630,12 +632,45 @@ func (wm *WindowManager) OnEnterNotify(event xproto.EnterNotifyEvent){
     }
 }
 
+func (wm *WindowManager) findWindow(window xproto.Window) (bool,int, xproto.Window){
+    for i, workspace := range wm.workspaces{
+        if i == wm.workspaceIndex{
+            continue
+        }
+
+        for frame := range workspace.frametoclient{
+            if frame==window{
+                return true, i, frame
+            }
+
+        }
+    }
+    return false, 0, 0
+}
+
 func (wm *WindowManager) OnUnmapNotify(event xproto.UnmapNotifyEvent){
     if _, ok := wm.currWorkspace.clients[event.Window]; !ok{
-        slog.Info("couldn't unmap since window wasn't in clients")
-        fmt.Println(event.Window)
-        fmt.Println(wm.currWorkspace.clients)
-        return
+        ok, index, frame := wm.findWindow(event.Event)
+        if !ok{
+            slog.Info("couldn't unmap since window wasn't in clients")
+            fmt.Println(event.Window)
+            fmt.Println(wm.currWorkspace.clients)
+            return
+        }else{
+            wm.currWorkspace = &wm.workspaces[index]
+            client := wm.currWorkspace.frametoclient[frame]
+            delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[frame])
+            delete(wm.currWorkspace.frametoclient, frame)
+            wm.workspaces[wm.workspaceIndex].frametoclient[frame]=client
+            wm.workspaces[wm.workspaceIndex].clients[client]=frame 
+            fmt.Println("frame")
+            fmt.Println(frame)
+            fmt.Println("index")
+            fmt.Println(index)
+            wm.currWorkspace = &wm.workspaces[wm.workspaceIndex]
+            wm.UnFrame(wm.currWorkspace.frametoclient[frame], true)
+            return
+        }
     }
 
     if(event.Event == wm.root){
@@ -644,23 +679,25 @@ func (wm *WindowManager) OnUnmapNotify(event xproto.UnmapNotifyEvent){
         return
     }
 
-    wm.UnFrame(event.Window)
+    wm.UnFrame(event.Window, false)
 }
 
-func (wm *WindowManager) UnFrame(w xproto.Window){
+func (wm *WindowManager) UnFrame(w xproto.Window, unmapped bool){
     frame := wm.currWorkspace.clients[w]
 
-    err := xproto.UnmapWindowChecked(
-        wm.conn,
-        frame,
-    ).Check()
+    if(!unmapped){
+        err := xproto.UnmapWindowChecked(
+            wm.conn,
+            frame,
+        ).Check()
 
-    if err!=nil{
-        slog.Error("couldn't unmap frame", "error:", err.Error())
-        return
+        if err!=nil{
+            slog.Error("couldn't unmap frame", "error:", err.Error())
+            return
+        }
     }
 
-    err = xproto.ReparentWindowChecked(
+    err := xproto.ReparentWindowChecked(
         wm.conn, 
         w,
         wm.root,
@@ -668,7 +705,6 @@ func (wm *WindowManager) UnFrame(w xproto.Window){
     ).Check()
     if err!=nil{
         slog.Error("couldn't remap window during unmapping", "error:", err.Error())
-        return
     }
 
     err = xproto.ChangeSaveSetChecked(
@@ -698,30 +734,65 @@ func (wm *WindowManager) UnFrame(w xproto.Window){
 }
 
 
-func (wm *WindowManager) isDock(win xproto.Window) bool {
-    // Intern required atoms
-    netWmWindowTypeAtom, _ := xproto.InternAtom(wm.conn, true, uint16(len("_NET_WM_WINDOW_TYPE")), "_NET_WM_WINDOW_TYPE").Reply()
-    dockAtom, _ := xproto.InternAtom(wm.conn, true, uint16(len("_NET_WM_WINDOW_TYPE_DOCK")), "_NET_WM_WINDOW_TYPE_DOCK").Reply()
 
-    prop, err := xproto.GetProperty(wm.conn, false, win, netWmWindowTypeAtom.Atom, xproto.AtomAtom, 0, 1024).Reply()
-    if err != nil || prop.Format != 32 || len(prop.Value) == 0 {
+func shouldIgnoreWindow(conn *xgb.Conn, win xproto.Window) bool {
+    // Intern the _NET_WM_WINDOW_TYPE atom
+    typeAtom, err := xproto.InternAtom(conn, false, uint16(len("_NET_WM_WINDOW_TYPE")), "_NET_WM_WINDOW_TYPE").Reply()
+    if err != nil {
+        slog.Error("Error getting _NET_WM_WINDOW_TYPE atom", "error", err)
         return false
     }
 
-    atoms := prop.Value
-    for i := 0; i < len(atoms); i += 4 {
-        atom := binary.LittleEndian.Uint32(atoms[i : i+4])
-        if atom == uint32(dockAtom.Atom) {
-            return true
-        }
+    // Get the _NET_WM_WINDOW_TYPE property for the window
+    actualType, err := xproto.GetProperty(conn, false, win, typeAtom.Atom, xproto.AtomAtom, 0, 1).Reply()
+    if err != nil {
+        slog.Error("Error getting _NET_WM_WINDOW_TYPE property", "error", err)
+        return false
+    }
+
+    if len(actualType.Value) == 0 {
+        return false
+    }
+
+    // Check if the window has the _NET_WM_WINDOW_TYPE_SPLASH, _NET_WM_WINDOW_TYPE_DIALOG, _NET_WM_WINDOW_TYPE_NOTIFICATION, or _NET_WM_WINDOW_TYPE_DOCK
+    netWmSplash, err := xproto.InternAtom(conn, false, uint16(len("_NET_WM_WINDOW_TYPE_SPLASH")), "_NET_WM_WINDOW_TYPE_SPLASH").Reply()
+    if err != nil {
+        slog.Error("Error getting _NET_WM_WINDOW_TYPE_SPLASH atom", "error", err)
+        return false
+    }
+
+    netWmDialog, err := xproto.InternAtom(conn, false, uint16(len("_NET_WM_WINDOW_TYPE_DIALOG")), "_NET_WM_WINDOW_TYPE_DIALOG").Reply()
+    if err != nil {
+        slog.Error("Error getting _NET_WM_WINDOW_TYPE_DIALOG atom", "error", err)
+        return false
+    }
+
+    netWmNotification, err := xproto.InternAtom(conn, false, uint16(len("_NET_WM_WINDOW_TYPE_NOTIFICATION")), "_NET_WM_WINDOW_TYPE_NOTIFICATION").Reply()
+    if err != nil {
+        slog.Error("Error getting _NET_WM_WINDOW_TYPE_NOTIFICATION atom", "error", err)
+        return false
+    }
+
+    netWmDock, err := xproto.InternAtom(conn, false, uint16(len("_NET_WM_WINDOW_TYPE_DOCK")), "_NET_WM_WINDOW_TYPE_DOCK").Reply()
+    if err != nil {
+        slog.Error("Error getting _NET_WM_WINDOW_TYPE_DOCK atom", "error", err)
+        return false
+    }
+
+    // Check if the window type matches any of the "ignore" types
+    windowType := xproto.Atom(binary.LittleEndian.Uint32(actualType.Value))
+
+    if windowType == netWmSplash.Atom || windowType == netWmDialog.Atom || windowType == netWmNotification.Atom || windowType == netWmDock.Atom {
+        return true
     }
 
     return false
 }
 
+
 func (wm *WindowManager) OnMapRequest(event xproto.MapRequestEvent){
-    if wm.isDock(event.Window){
-        fmt.Println("dock window")
+    if shouldIgnoreWindow(wm.conn, event.Window){
+        fmt.Println("ignored window since it is either dock, splash, dialog or notify")
         err := xproto.MapWindowChecked(
             wm.conn,
             event.Window,
