@@ -16,12 +16,18 @@ var (
     XUtil *xgbutil.XUtil
 )
 
+type Workspace struct{
+    clients map[xproto.Window]xproto.Window
+    frametoclient map[xproto.Window]xproto.Window
+}
+
 type WindowManager struct{
     conn *xgb.Conn
     root xproto.Window
-    clients map[xproto.Window]xproto.Window
-    frametoclient map[xproto.Window]xproto.Window
     width, height int
+    workspaces []Workspace
+    workspaceIndex int
+    currWorkspace *Workspace
 }
 
 
@@ -52,13 +58,22 @@ func Create() (*WindowManager, error){
         return nil, fmt.Errorf("couldn't get screen dimensions: %w", err)
     }
 
+    workspaces := make([]Workspace, 10)
+    for i := range workspaces{
+        workspaces[i] = Workspace{ 
+            clients: map[xproto.Window]xproto.Window{},
+            frametoclient: map[xproto.Window]xproto.Window{},
+        }
+    }
+
     return &WindowManager{
         conn: X,
         root: root,
-        clients: map[xproto.Window]xproto.Window{},
-        frametoclient: map[xproto.Window]xproto.Window{},
         width: int(dimensions.Width),
         height: int(dimensions.Height),
+        workspaces: workspaces,
+        currWorkspace: &workspaces[0],
+        workspaceIndex: 0,
     }, nil
 }
 
@@ -124,12 +139,43 @@ func (wm *WindowManager) Run(){
     f1KeyCode := keybind.StrToKeycodes(XUtil, "f1")[0]
     f2KeyCode := keybind.StrToKeycodes(XUtil, "f2")[0]
     f3KeyCode := keybind.StrToKeycodes(XUtil, "f3")[0]
+    oneKeyCode := keybind.StrToKeycodes(XUtil, "1")[0]
+    twoKeyCode := keybind.StrToKeycodes(XUtil, "2")[0]
+    threeKeyCode := keybind.StrToKeycodes(XUtil, "3")[0]
+    fourKeyCode := keybind.StrToKeycodes(XUtil, "4")[0]
+    fiveKeyCode := keybind.StrToKeycodes(XUtil, "5")[0]
+    sixKeyCode := keybind.StrToKeycodes(XUtil, "6")[0]
+    sevenKeyCode := keybind.StrToKeycodes(XUtil, "7")[0]
+    eightKeyCode := keybind.StrToKeycodes(XUtil, "8")[0]
+    nineKeyCode := keybind.StrToKeycodes(XUtil, "9")[0]
+    zeroKeyCode := keybind.StrToKeycodes(XUtil, "0")[0]
 
+    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1|xproto.ModMaskShift, cKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
     err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, cKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
     err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, wKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
     err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, f1KeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
     err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, f2KeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
     err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, f3KeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, oneKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, twoKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, threeKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, fourKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, fiveKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, sixKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, sevenKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, eightKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, nineKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, zeroKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1|xproto.ModMaskShift, oneKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1|xproto.ModMaskShift, twoKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1|xproto.ModMaskShift, threeKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1|xproto.ModMaskShift, fourKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1|xproto.ModMaskShift, fiveKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1|xproto.ModMaskShift, sixKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1|xproto.ModMaskShift, sevenKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1|xproto.ModMaskShift, eightKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1|xproto.ModMaskShift, nineKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1|xproto.ModMaskShift, zeroKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
 
     err = xproto.GrabButtonChecked(wm.conn, true, wm.root, 	uint16(xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease | xproto.EventMaskPointerMotion), xproto.GrabModeAsync, xproto.GrabModeAsync, xproto.WindowNone, xproto.AtomNone, xproto.ButtonIndex1, xproto.ModMask1).Check()
 
@@ -187,7 +233,7 @@ func (wm *WindowManager) Run(){
                         []uint32{uint32(Xoffset), uint32(Yoffset), uint32(sizeX), uint32(sizeY)},
                     )
                     if(sizeX!=attr.Width){
-                        client:=wm.frametoclient[start.Child]
+                        client:=wm.currWorkspace.frametoclient[start.Child]
                         xproto.ConfigureWindow(
                             wm.conn,
                             client,
@@ -229,9 +275,9 @@ func (wm *WindowManager) Run(){
                 fmt.Println(ev.Window)
                 fmt.Println("Event:")
                 fmt.Println(ev.Event)
-                if _, ok := wm.clients[ev.Window]; ok{
-                    delete(wm.frametoclient, wm.clients[ev.Window])
-                    delete(wm.clients, ev.Window)
+                if _, ok := wm.currWorkspace.clients[ev.Window]; ok{
+                    delete(wm.currWorkspace.frametoclient, wm.currWorkspace.clients[ev.Window])
+                    delete(wm.currWorkspace.clients, ev.Window)
                 }
                 break
             case xproto.EnterNotifyEvent:
@@ -249,43 +295,147 @@ func (wm *WindowManager) Run(){
             case xproto.KeyPressEvent:
                 fmt.Println("keyPress")
                 ev := event.(xproto.KeyPressEvent)
-                if ev.Detail==cKeyCode&&ev.State&xproto.ModMask1!=0{
-                    SendWmDelete(wm.conn, wm.frametoclient[ev.Child])
-                    fmt.Println(wm.frametoclient[ev.Child])
-                    wm.UnFrame(wm.frametoclient[ev.Child])
+                if ev.State&xproto.ModMask1!=0{
+                    if ev.Detail==cKeyCode{
+                        SendWmDelete(wm.conn, wm.currWorkspace.frametoclient[ev.Child])
+                        fmt.Println(wm.currWorkspace.frametoclient[ev.Child])
+                        wm.UnFrame(wm.currWorkspace.frametoclient[ev.Child])
 
-                }
-                if ev.Detail == cKeyCode && ev.State&(xproto.ModMask4|xproto.ModMaskShift) == (xproto.ModMask4|xproto.ModMaskShift) {
-                    // Mod + Shift + C → force close
-                    err := xproto.DestroyWindowChecked(wm.conn, wm.frametoclient[ev.Child]).Check()
-                    if err != nil {
-                        fmt.Println("Couldn't force destroy:", err)
+                    }else if ev.Detail == cKeyCode && ev.State&(xproto.ModMask1|xproto.ModMaskShift) == (xproto.ModMask1|xproto.ModMaskShift) {
+                        // Mod + Shift + C → force close
+                        err := xproto.DestroyWindowChecked(wm.conn, wm.currWorkspace.frametoclient[ev.Child]).Check()
+                        if err != nil {
+                            fmt.Println("Couldn't force destroy:", err)
+                        }
+                    }else if ev.Detail == wKeyCode{
+                        err := exec.Command("launcher_t2").Start()
+                        if err != nil{
+                            slog.Error("couldn't run rofi", "error:", err)
+                        }
+                    }else if ev.Detail == f1KeyCode{
+                        err := exec.Command("pactl", "set-sink-mute", "@DEFAULT_SINK@", "toggle").Start()
+                        if err != nil{
+                            slog.Error("couldn't toggle mute", "error:", err)
+                        }   
+                    }else if ev.Detail == f2KeyCode{
+                        err := exec.Command("pactl", "set-sink-volume", "@DEFAULT_SINK@", "-5%").Start()
+                        if err != nil{
+                            slog.Error("couldn't decrease volume", "error:", err)
+                        }
+                    }else if ev.Detail == f3KeyCode{
+                        err := exec.Command("pactl", "set-sink-volume", "@DEFAULT_SINK@", "+5%").Start()
+                        if err != nil{
+                            slog.Error("couldn't increase volume", "error:", err)
+                        }
+                    }
+
+                    if ev.State&(xproto.ModMask1|xproto.ModMaskShift) == (xproto.ModMask1|xproto.ModMaskShift)&&ev.Child!=wm.root{
+                        fmt.Println("moving window")
+                        w := ev.Child
+                        xproto.ConfigureWindow(
+                            wm.conn,
+                            w,
+                            xproto.ConfigWindowStackMode,
+                            []uint32{xproto.StackModeAbove},
+                        )
+                        switch ev.Detail{
+                        case oneKeyCode:
+                            client := wm.currWorkspace.frametoclient[w]
+                            delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
+                            delete(wm.currWorkspace.frametoclient, w)
+                            wm.switchWorkspace(0)
+                            wm.currWorkspace.frametoclient[w]=client
+                            wm.currWorkspace.clients[client]=w 
+                        case twoKeyCode:
+                            client := wm.currWorkspace.frametoclient[w]
+                            delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
+                            delete(wm.currWorkspace.frametoclient, w)
+                            wm.switchWorkspace(1)
+                            wm.currWorkspace.frametoclient[w]=client
+                            wm.currWorkspace.clients[client]=w 
+                        case threeKeyCode:
+                            client := wm.currWorkspace.frametoclient[w]
+                            delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
+                            delete(wm.currWorkspace.frametoclient, w)
+                            wm.switchWorkspace(2)
+                            wm.currWorkspace.frametoclient[w]=client
+                            wm.currWorkspace.clients[client]=w 
+                        case fourKeyCode:
+                            client := wm.currWorkspace.frametoclient[w]
+                            delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
+                            delete(wm.currWorkspace.frametoclient, w)
+                            wm.switchWorkspace(3)
+                            wm.currWorkspace.frametoclient[w]=client
+                            wm.currWorkspace.clients[client]=w 
+                        case fiveKeyCode:
+                            client := wm.currWorkspace.frametoclient[w]
+                            delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
+                            delete(wm.currWorkspace.frametoclient, w)
+                            wm.switchWorkspace(4)
+                            wm.currWorkspace.frametoclient[w]=client
+                            wm.currWorkspace.clients[client]=w
+                        case sixKeyCode:
+                            client := wm.currWorkspace.frametoclient[w]
+                            delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
+                            delete(wm.currWorkspace.frametoclient, w)
+                            wm.switchWorkspace(5)
+                            wm.currWorkspace.frametoclient[w]=client
+                            wm.currWorkspace.clients[client]=w 
+                        case sevenKeyCode:
+                            client := wm.currWorkspace.frametoclient[w]
+                            delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
+                            delete(wm.currWorkspace.frametoclient, w)
+                            wm.switchWorkspace(6)
+                            wm.currWorkspace.frametoclient[w]=client
+                            wm.currWorkspace.clients[client]=w 
+                        case eightKeyCode:
+                            client := wm.currWorkspace.frametoclient[w]
+                            delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
+                            delete(wm.currWorkspace.frametoclient, w)
+                            wm.switchWorkspace(7)
+                            wm.currWorkspace.frametoclient[w]=client
+                            wm.currWorkspace.clients[client]=w 
+                        case nineKeyCode:
+                            client := wm.currWorkspace.frametoclient[w]
+                            delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
+                            delete(wm.currWorkspace.frametoclient, w)
+                            wm.switchWorkspace(8)
+                            wm.currWorkspace.frametoclient[w]=client
+                            wm.currWorkspace.clients[client]=w 
+                        case zeroKeyCode:
+                            client := wm.currWorkspace.frametoclient[w]
+                            delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
+                            delete(wm.currWorkspace.frametoclient, w)
+                            wm.switchWorkspace(9)
+                            wm.currWorkspace.frametoclient[w]=client
+                            wm.currWorkspace.clients[client]=w 
+                        }     
+
+                    }else{ 
+                        switch ev.Detail{
+                        case oneKeyCode:
+                            wm.switchWorkspace(0)
+                        case twoKeyCode:
+                            wm.switchWorkspace(1)
+                        case threeKeyCode:
+                            wm.switchWorkspace(2)
+                        case fourKeyCode:
+                            wm.switchWorkspace(3)
+                        case fiveKeyCode:
+                            wm.switchWorkspace(4)
+                        case sixKeyCode:
+                            wm.switchWorkspace(5)
+                        case sevenKeyCode:
+                            wm.switchWorkspace(6)
+                        case eightKeyCode:
+                            wm.switchWorkspace(7)
+                        case nineKeyCode:
+                            wm.switchWorkspace(8)
+                        case zeroKeyCode:
+                            wm.switchWorkspace(9)
+                        }
                     }
                 }
-                if ev.Detail == wKeyCode&&ev.State&xproto.ModMask1!=0{
-                    err := exec.Command("launcher_t2").Start()
-                    if err != nil{
-                        slog.Error("couldn't run rofi", "error:", err)
-                    }
-                }
-                if ev.Detail == f1KeyCode&&ev.State&xproto.ModMask1!=0{
-                    err := exec.Command("pactl", "set-sink-mute", "@DEFAULT_SINK@", "toggle").Start()
-                    if err != nil{
-                        slog.Error("couldn't toggle mute", "error:", err)
-                    }   
-                }
-                if ev.Detail == f2KeyCode&&ev.State&xproto.ModMask1!=0{
-                    err := exec.Command("pactl", "set-sink-volume", "@DEFAULT_SINK@", "-5%").Start()
-                    if err != nil{
-                        slog.Error("couldn't decrease volume", "error:", err)
-                    }
-                }
-                if ev.Detail == f3KeyCode&&ev.State&xproto.ModMask1!=0{
-                    err := exec.Command("pactl", "set-sink-volume", "@DEFAULT_SINK@", "+5%").Start()
-                    if err != nil{
-                        slog.Error("couldn't increase volume", "error:", err)
-                    }
-                } 
                 break
             case xproto.ClientMessageEvent:
                 ev := event.(xproto.ClientMessageEvent)
@@ -299,7 +449,30 @@ func (wm *WindowManager) Run(){
     }
 }
 
+func (wm *WindowManager) switchWorkspace(workspace int){
+    if workspace==wm.workspaceIndex{
+        return
+    }
 
+    for frame := range wm.currWorkspace.frametoclient{
+        err := xproto.UnmapWindowChecked(wm.conn, frame).Check()
+        if err != nil{
+            slog.Error("couldn't unmap window", "error:", err)
+            return
+        }
+    }
+
+    wm.currWorkspace = &wm.workspaces[workspace]
+    wm.workspaceIndex = workspace
+
+    for frame := range wm.currWorkspace.frametoclient{
+        err := xproto.MapWindowChecked(wm.conn, frame).Check()
+        if err != nil{
+            slog.Error("couldn't map window", "error:", err)
+            return
+        }
+    }
+}
 
 func SendWmDelete(conn *xgb.Conn, window xproto.Window) error {
     wmProtocolsAtom, _ := xproto.InternAtom(conn, true, uint16(len("WM_PROTOCOLS")), "WM_PROTOCOLS").Reply()
@@ -383,10 +556,10 @@ func (wm *WindowManager) OnEnterNotify(event xproto.EnterNotifyEvent){
 }
 
 func (wm *WindowManager) OnUnmapNotify(event xproto.UnmapNotifyEvent){
-    if _, ok := wm.clients[event.Window]; !ok{
+    if _, ok := wm.currWorkspace.clients[event.Window]; !ok{
         slog.Info("couldn't unmap since window wasn't in clients")
         fmt.Println(event.Window)
-        fmt.Println(wm.clients)
+        fmt.Println(wm.currWorkspace.clients)
         return
     }
 
@@ -400,7 +573,7 @@ func (wm *WindowManager) OnUnmapNotify(event xproto.UnmapNotifyEvent){
 }
 
 func (wm *WindowManager) UnFrame(w xproto.Window){
-    frame := wm.clients[w]
+    frame := wm.currWorkspace.clients[w]
 
     err := xproto.UnmapWindowChecked(
         wm.conn,
@@ -444,8 +617,8 @@ func (wm *WindowManager) UnFrame(w xproto.Window){
         return
     }
 
-    delete(wm.clients, w)
-    delete(wm.frametoclient, frame)
+    delete(wm.currWorkspace.clients, w)
+    delete(wm.currWorkspace.frametoclient, frame)
     slog.Info("Unmapped", "frame", frame, "window", w)
 }
 
@@ -465,7 +638,7 @@ func (wm *WindowManager) OnMapRequest(event xproto.MapRequestEvent){
 
 func (wm *WindowManager) Frame(w xproto.Window, createdBeforeWM bool){
 
-    if _, exists := wm.clients[w]; exists {
+    if _, exists := wm.currWorkspace.clients[w]; exists {
         fmt.Println("Already framed", w)
         return
     }
@@ -575,14 +748,14 @@ func (wm *WindowManager) Frame(w xproto.Window, createdBeforeWM bool){
         slog.Error("Couldn't map window","error:", err.Error())
         return
     }
-    wm.clients[w] = frameId
-    wm.frametoclient[frameId] = w
+    wm.currWorkspace.clients[w] = frameId
+    wm.currWorkspace.frametoclient[frameId] = w
     fmt.Println("Framed window"+strconv.Itoa(int(w))+"["+strconv.Itoa(int(frameId))+"]")
 }
 
 func (wm *WindowManager) OnConfigureRequest(event xproto.ConfigureRequestEvent){
 
-    if frame, ok := wm.clients[event.Window]; ok {
+    if frame, ok := wm.currWorkspace.clients[event.Window]; ok {
         changes := createChanges(event)
 
         xproto.ConfigureWindow(wm.conn, frame, event.ValueMask, changes)
