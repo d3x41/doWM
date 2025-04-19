@@ -1,15 +1,17 @@
 package wm
 
 import (
-    "fmt"
-    "strconv"
-    "os/exec"
-    "log/slog"
-    "math"
-    "github.com/BurntSushi/xgb"
+	"encoding/binary"
+	"fmt"
+	"log/slog"
+	"math"
+	"os/exec"
+	"strconv"
+
+	"github.com/BurntSushi/xgb"
 	"github.com/BurntSushi/xgb/xproto"
-    "github.com/BurntSushi/xgbutil"
-    "github.com/BurntSushi/xgbutil/keybind"
+	"github.com/BurntSushi/xgbutil"
+	"github.com/BurntSushi/xgbutil/keybind"
 )
 
 var (
@@ -96,6 +98,9 @@ func (wm *WindowManager) Run(){
             return
         }
     }
+
+    wm.broadcastWorkspace(0)
+    wm.broadcastWorkspaceCount()
 
     err = xproto.GrabServerChecked(
         wm.conn,
@@ -449,6 +454,74 @@ func (wm *WindowManager) Run(){
     }
 }
 
+func (wm *WindowManager) broadcastWorkspaceCount() {
+    count:=wm.workspaceIndex+1
+    otherCount:=0
+    for i, workspace := range wm.workspaces{
+        if len(workspace.frametoclient)>0{
+            otherCount=i
+        }
+    }
+    otherCount+=1
+    if otherCount>count{
+        count = otherCount
+    }
+    data := make([]byte, 4)
+    binary.LittleEndian.PutUint32(data, uint32(count))
+
+    netNumberAtom, _ := xproto.InternAtom(wm.conn, true, uint16(len("_NET_NUMBER_OF_DESKTOPS")), "_NET_NUMBER_OF_DESKTOPS").Reply()
+    cardinalAtom, _ := xproto.InternAtom(wm.conn, true, uint16(len("CARDINAL")), "CARDINAL").Reply()
+
+    xproto.ChangePropertyChecked(
+        wm.conn,
+        xproto.PropModeReplace,
+        wm.root,
+        netNumberAtom.Atom,
+        cardinalAtom.Atom,
+        32,
+        1,
+        data,
+    ).Check()
+}
+
+func (wm *WindowManager) broadcastWorkspace(num int){
+
+    data := make([]byte, 4)
+    binary.LittleEndian.PutUint32(data, uint32(num))
+
+
+    netCurrentDesktopAtom, err := xproto.InternAtom(wm.conn, false, uint16(len("_NET_CURRENT_DESKTOP")), "_NET_CURRENT_DESKTOP").Reply()
+
+    if err != nil {
+        slog.Error("intern _NET_CURRENT_DESKTOP", "error:", err)
+        return
+    }
+
+    cardinalAtom, err := xproto.InternAtom(wm.conn, true, uint16(len("CARDINAL")), "CARDINAL").Reply()
+    if err != nil {
+        slog.Error("intern CARDINAL","error:" ,err)
+        return
+    }
+    fmt.Println(netCurrentDesktopAtom.Atom)
+    fmt.Println(cardinalAtom.Atom)
+    err = xproto.ChangePropertyChecked(
+        wm.conn,
+        xproto.PropModeReplace,
+        wm.root,
+        netCurrentDesktopAtom.Atom, // must not be 0
+        cardinalAtom.Atom,          // must not be 0
+        32,
+        1,
+        data,
+    ).Check()
+
+    if err != nil{
+        slog.Error("couldn't set _NET_CURRENT_DESKTOP", "error:", err)
+    }
+
+    wm.broadcastWorkspaceCount()
+}
+
 func (wm *WindowManager) switchWorkspace(workspace int){
     if workspace==wm.workspaceIndex{
         return
@@ -472,6 +545,8 @@ func (wm *WindowManager) switchWorkspace(workspace int){
             return
         }
     }
+
+    wm.broadcastWorkspace(workspace)
 }
 
 func SendWmDelete(conn *xgb.Conn, window xproto.Window) error {
@@ -622,7 +697,41 @@ func (wm *WindowManager) UnFrame(w xproto.Window){
     slog.Info("Unmapped", "frame", frame, "window", w)
 }
 
+
+func (wm *WindowManager) isDock(win xproto.Window) bool {
+    // Intern required atoms
+    netWmWindowTypeAtom, _ := xproto.InternAtom(wm.conn, true, uint16(len("_NET_WM_WINDOW_TYPE")), "_NET_WM_WINDOW_TYPE").Reply()
+    dockAtom, _ := xproto.InternAtom(wm.conn, true, uint16(len("_NET_WM_WINDOW_TYPE_DOCK")), "_NET_WM_WINDOW_TYPE_DOCK").Reply()
+
+    prop, err := xproto.GetProperty(wm.conn, false, win, netWmWindowTypeAtom.Atom, xproto.AtomAtom, 0, 1024).Reply()
+    if err != nil || prop.Format != 32 || len(prop.Value) == 0 {
+        return false
+    }
+
+    atoms := prop.Value
+    for i := 0; i < len(atoms); i += 4 {
+        atom := binary.LittleEndian.Uint32(atoms[i : i+4])
+        if atom == uint32(dockAtom.Atom) {
+            return true
+        }
+    }
+
+    return false
+}
+
 func (wm *WindowManager) OnMapRequest(event xproto.MapRequestEvent){
+    if wm.isDock(event.Window){
+        fmt.Println("dock window")
+        err := xproto.MapWindowChecked(
+            wm.conn,
+            event.Window,
+        ).Check()
+        if err != nil {
+            slog.Error("Couldn't create new window id","error:", err.Error())
+        }
+        return
+    } 
+
     wm.Frame(event.Window, false)
     err := xproto.MapWindowChecked(
         wm.conn,
