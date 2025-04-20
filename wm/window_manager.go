@@ -18,9 +18,17 @@ var (
     XUtil *xgbutil.XUtil
 )
 
+type Window struct{
+    id xproto.Window
+    X,Y int
+    Width, Height int
+    Fullscreen bool
+}
+
 type Workspace struct{
     clients map[xproto.Window]xproto.Window
     frametoclient map[xproto.Window]xproto.Window
+    windows map[xproto.Window]*Window
 }
 
 type WindowManager struct{
@@ -30,6 +38,7 @@ type WindowManager struct{
     workspaces []Workspace
     workspaceIndex int
     currWorkspace *Workspace
+    atoms map[string]xproto.Atom
 }
 
 
@@ -65,6 +74,7 @@ func Create() (*WindowManager, error){
         workspaces[i] = Workspace{ 
             clients: map[xproto.Window]xproto.Window{},
             frametoclient: map[xproto.Window]xproto.Window{},
+            windows: map[xproto.Window]*Window{},
         }
     }
 
@@ -76,6 +86,7 @@ func Create() (*WindowManager, error){
         workspaces: workspaces,
         currWorkspace: &workspaces[0],
         workspaceIndex: 0,
+        atoms: map[string]xproto.Atom{},
     }, nil
 }
 
@@ -142,6 +153,7 @@ func (wm *WindowManager) Run(){
     }
 
     cKeyCode := keybind.StrToKeycodes(XUtil, "c")[0]
+    fKeyCode := keybind.StrToKeycodes(XUtil, "f")[0]
     wKeyCode := keybind.StrToKeycodes(XUtil, "w")[0]
     f1KeyCode := keybind.StrToKeycodes(XUtil, "f1")[0]
     f2KeyCode := keybind.StrToKeycodes(XUtil, "f2")[0]
@@ -158,6 +170,7 @@ func (wm *WindowManager) Run(){
     zeroKeyCode := keybind.StrToKeycodes(XUtil, "0")[0]
 
     err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1|xproto.ModMaskShift, cKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, fKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
     err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, cKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
     err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, wKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
     err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, f1KeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
@@ -196,6 +209,21 @@ func (wm *WindowManager) Run(){
     var start xproto.ButtonPressEvent
     var attr *xproto.GetGeometryReply
 
+
+    atoms := []string{
+        "_NET_WM_STATE",
+        "_NET_WM_STATE_FULLSCREEN",
+        "_NET_WM_STATE_ABOVE",
+        "_NET_WM_STATE_BELOW",
+        "_NET_WM_STATE_MAXIMIZED_HORZ",
+        "_NET_WM_STATE_MAXIMIZED_VERT",
+    }
+
+    for _, name := range atoms {
+        a, _ := xproto.InternAtom(wm.conn, false, uint16(len(name)), name).Reply()
+        fmt.Printf("%s = %d\n", name, a.Atom)
+        wm.atoms[name] = a.Atom
+    }
     for{
         event, err := wm.conn.PollForEvent()
         if err!=nil{
@@ -211,12 +239,23 @@ func (wm *WindowManager) Run(){
                 if ev.Child!=0{
                     attr, _ = xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
                     start = ev
+                    if ev.Detail == xproto.ButtonIndex1{ 
+                        xproto.ConfigureWindow(
+                            wm.conn,
+                            ev.Child,
+                            xproto.ConfigWindowStackMode,
+                            []uint32{xproto.StackModeAbove},
+                        )
+                    }
                 }
             case xproto.ButtonReleaseEvent:
                 start.Child = 0
             case xproto.MotionNotifyEvent:
                 ev := event.(xproto.MotionNotifyEvent)
-                if start.Child != 0{
+                if start.Child != 0&&ev.State&xproto.ModMask1!=0{
+                    if wm.currWorkspace.windows[start.Child]!=nil&&wm.currWorkspace.windows[start.Child].Fullscreen{
+                        break
+                    }
                     xdiff := ev.RootX - start.RootX
                     ydiff := ev.RootY - start.RootY
                     Xoffset := attr.X + xdiff
@@ -284,6 +323,7 @@ func (wm *WindowManager) Run(){
                 fmt.Println(ev.Event)
                 if _, ok := wm.currWorkspace.clients[ev.Window]; ok{
                     delete(wm.currWorkspace.frametoclient, wm.currWorkspace.clients[ev.Window])
+                    delete(wm.currWorkspace.windows, wm.currWorkspace.clients[ev.Window])
                     delete(wm.currWorkspace.clients, ev.Window)
                 }
                 break
@@ -314,6 +354,8 @@ func (wm *WindowManager) Run(){
                         if err != nil {
                             fmt.Println("Couldn't force destroy:", err)
                         }
+                    }else if ev.Detail == fKeyCode{
+                        wm.toggleFullScreen(ev.Child)
                     }else if ev.Detail == wKeyCode{
                         err := exec.Command("launcher_t2").Start()
                         if err != nil{
@@ -448,10 +490,62 @@ func (wm *WindowManager) Run(){
                 ev := event.(xproto.ClientMessageEvent)
                 atomName, _ := xproto.GetAtomName(wm.conn, xproto.Atom(ev.Type)).Reply()
                 fmt.Println("Atom name is:", atomName.Name)
+                break
             default:
                 fmt.Println("event: "+event.String())
                 fmt.Println(event.Bytes())
 
+        }
+    }
+}
+func (wm *WindowManager) toggleFullScreen(Child xproto.Window){
+    win := wm.currWorkspace.windows[Child]
+    if win != nil{
+        if win.Fullscreen{
+            win.Fullscreen = false
+            err := xproto.ConfigureWindowChecked(
+                wm.conn,
+                Child,
+                xproto.ConfigWindowX | xproto.ConfigWindowY |
+                xproto.ConfigWindowWidth | xproto.ConfigWindowHeight | xproto.ConfigWindowBorderWidth,
+                []uint32{uint32(win.X), uint32(win.Y), uint32(win.Width), uint32(win.Height), 3},
+            ).Check()
+            err = xproto.ConfigureWindowChecked(
+                wm.conn,
+                wm.currWorkspace.frametoclient[Child],
+                xproto.ConfigWindowX | xproto.ConfigWindowY |
+                xproto.ConfigWindowWidth | xproto.ConfigWindowHeight,
+                []uint32{0, 0, uint32(win.Width), uint32(win.Height)},
+            ).Check()
+            if err != nil{
+                slog.Error("couldn't un fullscreen window", "error: ", err)
+            }
+        }else{
+            win.Fullscreen = true
+            xproto.ConfigureWindow(wm.conn, Child, xproto.ConfigWindowStackMode, []uint32{xproto.StackModeAbove})
+            attr, _ := xproto.GetGeometry(wm.conn, xproto.Drawable(Child)).Reply()
+            win := wm.currWorkspace.windows[Child]
+            win.X = int(attr.X)
+            win.Y = int(attr.Y)
+            win.Width = int(attr.Width)
+            win.Height = int(attr.Height)
+            err := xproto.ConfigureWindowChecked(
+                wm.conn,
+                Child,
+                xproto.ConfigWindowX | xproto.ConfigWindowY |
+                xproto.ConfigWindowWidth | xproto.ConfigWindowHeight|xproto.ConfigWindowBorderWidth,
+                []uint32{0, 0, uint32(wm.width), uint32(wm.height),  0},
+            ).Check()
+            err = xproto.ConfigureWindowChecked(
+                wm.conn,
+                wm.currWorkspace.frametoclient[Child],
+                xproto.ConfigWindowX | xproto.ConfigWindowY |
+                xproto.ConfigWindowWidth | xproto.ConfigWindowHeight,
+                []uint32{0, 0, uint32(wm.width), uint32(wm.height)},
+            ).Check()
+            if err != nil{
+                slog.Error("couldn't fullscreen window", "error:", err)
+            }
         }
     }
 }
@@ -615,7 +709,6 @@ func (wm *WindowManager) OnLeaveNotify(event xproto.LeaveNotifyEvent){
 
 func (wm *WindowManager) OnEnterNotify(event xproto.EnterNotifyEvent){
     err:=xproto.SetInputFocusChecked(wm.conn, xproto.InputFocusPointerRoot, event.Event, xproto.TimeCurrentTime).Check()
-
     const BorderWidth = 3
     const Col = 0xa6da95
     err = xproto.ChangeWindowAttributesChecked(
@@ -729,6 +822,7 @@ func (wm *WindowManager) UnFrame(w xproto.Window, unmapped bool){
     }
 
     delete(wm.currWorkspace.clients, w)
+    delete(wm.currWorkspace.windows, frame)
     delete(wm.currWorkspace.frametoclient, frame)
     slog.Info("Unmapped", "frame", frame, "window", w)
 }
@@ -930,6 +1024,13 @@ func (wm *WindowManager) Frame(w xproto.Window, createdBeforeWM bool){
     }
     wm.currWorkspace.clients[w] = frameId
     wm.currWorkspace.frametoclient[frameId] = w
+    wm.currWorkspace.windows[frameId] = &Window{
+        X: int(topLeftX),
+        Y: int(topLeftY),
+        Width: int(geometry.Width),
+        Height: int(geometry.Height),
+        Fullscreen: false,
+    }
     fmt.Println("Framed window"+strconv.Itoa(int(w))+"["+strconv.Itoa(int(frameId))+"]")
 }
 
