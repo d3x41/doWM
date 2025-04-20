@@ -7,7 +7,7 @@ import (
 	"math"
 	"os/exec"
 	"strconv"
-
+    "os"
 	"github.com/BurntSushi/xgb"
 	"github.com/BurntSushi/xgb/xproto"
 	"github.com/BurntSushi/xgbutil"
@@ -89,9 +89,17 @@ func Create() (*WindowManager, error){
         atoms: map[string]xproto.Atom{},
     }, nil
 }
-
+func fileExists(filename string) bool {
+	_, err := os.Stat(filename)
+	return !os.IsNotExist(err)
+}
 func (wm *WindowManager) Run(){
     fmt.Println("window manager up and running")
+
+    if fileExists("/home/sam/.config/doWM/autostart.sh"){
+        fmt.Println("autostart exists..., running")
+        exec.Command("/home/sam/.config/doWM/autostart.sh").Start()
+    } 
 
     err := xproto.ChangeWindowAttributesChecked(
         wm.conn, 
@@ -203,7 +211,6 @@ func (wm *WindowManager) Run(){
 
     if err!=nil{
         slog.Error("couldn't grab window+c key", "error:", err.Error())
-        return
     }
 
     var start xproto.ButtonPressEvent
@@ -378,7 +385,7 @@ func (wm *WindowManager) Run(){
                         }
                     }
 
-                    if ev.State&(xproto.ModMask1|xproto.ModMaskShift) == (xproto.ModMask1|xproto.ModMaskShift)&&ev.Child!=wm.root{
+                    if ev.State&(xproto.ModMask1|xproto.ModMaskShift) == (xproto.ModMask1|xproto.ModMaskShift)&&ev.Child!=wm.root&&wm.currWorkspace.windows[ev.Child]!=nil{
                         fmt.Println("moving window")
                         w := ev.Child
                         xproto.ConfigureWindow(
@@ -390,73 +397,103 @@ func (wm *WindowManager) Run(){
                         switch ev.Detail{
                         case oneKeyCode:
                             client := wm.currWorkspace.frametoclient[w]
+                            window := *wm.currWorkspace.windows[w]
                             delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
+                            delete(wm.currWorkspace.windows, w)
                             delete(wm.currWorkspace.frametoclient, w)
                             wm.switchWorkspace(0)
                             wm.currWorkspace.frametoclient[w]=client
+                            wm.currWorkspace.windows[w]=&window
                             wm.currWorkspace.clients[client]=w 
                         case twoKeyCode:
                             client := wm.currWorkspace.frametoclient[w]
+                            window := *wm.currWorkspace.windows[w]
                             delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
+                            delete(wm.currWorkspace.windows, w)
                             delete(wm.currWorkspace.frametoclient, w)
                             wm.switchWorkspace(1)
                             wm.currWorkspace.frametoclient[w]=client
+                            wm.currWorkspace.windows[w]=&window
                             wm.currWorkspace.clients[client]=w 
                         case threeKeyCode:
                             client := wm.currWorkspace.frametoclient[w]
+                            window := *wm.currWorkspace.windows[w]
                             delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
+                            delete(wm.currWorkspace.windows, w)
                             delete(wm.currWorkspace.frametoclient, w)
                             wm.switchWorkspace(2)
                             wm.currWorkspace.frametoclient[w]=client
+                            wm.currWorkspace.windows[w]=&window
                             wm.currWorkspace.clients[client]=w 
                         case fourKeyCode:
                             client := wm.currWorkspace.frametoclient[w]
+                            window := *wm.currWorkspace.windows[w]
                             delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
+                            delete(wm.currWorkspace.windows, w)
                             delete(wm.currWorkspace.frametoclient, w)
                             wm.switchWorkspace(3)
                             wm.currWorkspace.frametoclient[w]=client
+                            wm.currWorkspace.windows[w]=&window
                             wm.currWorkspace.clients[client]=w 
                         case fiveKeyCode:
                             client := wm.currWorkspace.frametoclient[w]
+                            window := *wm.currWorkspace.windows[w]
                             delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
+                            delete(wm.currWorkspace.windows, w)
                             delete(wm.currWorkspace.frametoclient, w)
                             wm.switchWorkspace(4)
                             wm.currWorkspace.frametoclient[w]=client
+                            wm.currWorkspace.windows[w]=&window
                             wm.currWorkspace.clients[client]=w
                         case sixKeyCode:
                             client := wm.currWorkspace.frametoclient[w]
+                            window := *wm.currWorkspace.windows[w]
                             delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
+                            delete(wm.currWorkspace.windows, w)
                             delete(wm.currWorkspace.frametoclient, w)
                             wm.switchWorkspace(5)
                             wm.currWorkspace.frametoclient[w]=client
+                            wm.currWorkspace.windows[w]=&window
                             wm.currWorkspace.clients[client]=w 
                         case sevenKeyCode:
                             client := wm.currWorkspace.frametoclient[w]
+                            window := *wm.currWorkspace.windows[w]
                             delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
+                            delete(wm.currWorkspace.windows, w)
                             delete(wm.currWorkspace.frametoclient, w)
                             wm.switchWorkspace(6)
                             wm.currWorkspace.frametoclient[w]=client
+                            wm.currWorkspace.windows[w]=&window
                             wm.currWorkspace.clients[client]=w 
                         case eightKeyCode:
                             client := wm.currWorkspace.frametoclient[w]
+                            window := *wm.currWorkspace.windows[w]
                             delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
+                            delete(wm.currWorkspace.windows, w)
                             delete(wm.currWorkspace.frametoclient, w)
                             wm.switchWorkspace(7)
                             wm.currWorkspace.frametoclient[w]=client
+                            wm.currWorkspace.windows[w]=&window
                             wm.currWorkspace.clients[client]=w 
                         case nineKeyCode:
                             client := wm.currWorkspace.frametoclient[w]
+                            window := *wm.currWorkspace.windows[w]
                             delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
+                            delete(wm.currWorkspace.windows, w)
                             delete(wm.currWorkspace.frametoclient, w)
                             wm.switchWorkspace(8)
                             wm.currWorkspace.frametoclient[w]=client
+                            wm.currWorkspace.windows[w]=&window
                             wm.currWorkspace.clients[client]=w 
                         case zeroKeyCode:
                             client := wm.currWorkspace.frametoclient[w]
+                            window := *wm.currWorkspace.windows[w]
                             delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
+                            delete(wm.currWorkspace.windows, w)
                             delete(wm.currWorkspace.frametoclient, w)
                             wm.switchWorkspace(9)
                             wm.currWorkspace.frametoclient[w]=client
+                            wm.currWorkspace.windows[w]=&window
                             wm.currWorkspace.clients[client]=w 
                         }     
 
@@ -754,6 +791,7 @@ func (wm *WindowManager) OnUnmapNotify(event xproto.UnmapNotifyEvent){
             client := wm.currWorkspace.frametoclient[frame]
             delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[frame])
             delete(wm.currWorkspace.frametoclient, frame)
+            delete(wm.currWorkspace.windows, frame)
             wm.workspaces[wm.workspaceIndex].frametoclient[frame]=client
             wm.workspaces[wm.workspaceIndex].clients[client]=frame 
             fmt.Println("frame")
