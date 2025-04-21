@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"os"
 	"os/exec"
+	"os/user"
+	"path/filepath"
 	"strconv"
-    "os"
+
 	"github.com/BurntSushi/xgb"
 	"github.com/BurntSushi/xgb/xproto"
 	"github.com/BurntSushi/xgbutil"
@@ -198,12 +201,16 @@ func fileExists(filename string) bool {
 func (wm *WindowManager) Run(){
     fmt.Println("window manager up and running")
 
-    if fileExists("/home/sam/.config/doWM/autostart.sh"){
-        fmt.Println("autostart exists..., running")
-        exec.Command("/home/sam/.config/doWM/autostart.sh").Start()
-    } 
+    user, err := user.Current()
+    if err == nil{
+        scriptPath := filepath.Join(user.HomeDir, ".config", "doWM", "autostart.sh")
 
-    err := xproto.ChangeWindowAttributesChecked(
+        if fileExists(scriptPath){
+            fmt.Println("autostart exists..., running")
+            exec.Command("/home/sam/.config/doWM/autostart.sh").Start()
+        } 
+    }
+    err = xproto.ChangeWindowAttributesChecked(
         wm.conn, 
         wm.root,
         xproto.CwEventMask,
