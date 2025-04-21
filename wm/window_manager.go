@@ -18,6 +18,14 @@ var (
     XUtil *xgbutil.XUtil
 )
 
+type LayoutWindow struct{
+    WidthPercentage, HeightPercentage, XPercentage, YPercentage float64
+}
+
+type Layout struct{
+    Windows []LayoutWindow
+}
+
 type Window struct{
     id xproto.Window
     X,Y int
@@ -25,10 +33,16 @@ type Window struct{
     Fullscreen bool
 }
 
+type Space struct{
+    X,Y int
+    Width, Height int
+}
+
 type Workspace struct{
     clients map[xproto.Window]xproto.Window
     frametoclient map[xproto.Window]xproto.Window
     windows map[xproto.Window]*Window
+    tiling bool
 }
 
 type WindowManager struct{
@@ -39,8 +53,92 @@ type WindowManager struct{
     workspaceIndex int
     currWorkspace *Workspace
     atoms map[string]xproto.Atom
+    tiling bool
+    tilingspace Space
+    layouts []Layout
+    gap int
 }
 
+func createLayouts() ([]Layout){
+    return []Layout{
+        {
+            []LayoutWindow{ // one window layout
+                {
+                    XPercentage: 0, // left
+                    YPercentage: 0, // top
+                    WidthPercentage: 1, // full width
+                    HeightPercentage: 1, // full height
+                },
+            },
+        }, 
+        {
+            []LayoutWindow{ // two window layout
+                {
+                    XPercentage: 0, // left
+                    YPercentage: 0, // top
+                    WidthPercentage: 0.5, // half width
+                    HeightPercentage: 1, // full height
+                },
+                {
+                    XPercentage: 0.5, // half from left
+                    YPercentage: 0, // top
+                    WidthPercentage: 0.5, // half width
+                    HeightPercentage: 1, // full height
+                },
+            },
+        },
+        {
+            []LayoutWindow{ // three window layout
+                {
+                    XPercentage: 0, //left
+                    YPercentage: 0, //top
+                    WidthPercentage: 1.0/3, // third of width
+                    HeightPercentage: 1, // full height
+                },
+                {
+                    XPercentage: 1.0/3, // third from left
+                    YPercentage: 0, // top
+                    WidthPercentage: 1.0/3, //third of width
+                    HeightPercentage: 1, // full height
+                },
+                {
+                    XPercentage: 2.0/3, // 2 thirds from left
+                    YPercentage: 0, // top
+                    WidthPercentage: 1.0/3, // third of width
+                    HeightPercentage: 1, // full height
+                },
+            },
+        },
+        {
+            []LayoutWindow{ // 4 window layout
+                {
+                    XPercentage: 0, // left
+                    YPercentage: 0, // top
+                    WidthPercentage: 0.5, // half width
+                    HeightPercentage: 0.5, // half height
+                },
+                {
+                    XPercentage: 0.5, // half from left
+                    YPercentage: 0, // top
+                    WidthPercentage: 0.5, // half width
+                    HeightPercentage: 0.5, // half height
+                },
+                {
+                    XPercentage: 0, //left
+                    YPercentage: 0.5, // half from top
+                    WidthPercentage: 0.5, // half width
+                    HeightPercentage: 0.5, // half height
+                },
+                {
+                    XPercentage: 0.5, // half from left
+                    YPercentage: 0.5, // half from top
+                    WidthPercentage: 0.5, // half width
+                    HeightPercentage: 0.5,// half height
+                },
+            },
+        },
+    }
+}
 
 func Create() (*WindowManager, error){
     X, err := xgb.NewConn()
@@ -75,6 +173,7 @@ func Create() (*WindowManager, error){
             clients: map[xproto.Window]xproto.Window{},
             frametoclient: map[xproto.Window]xproto.Window{},
             windows: map[xproto.Window]*Window{},
+            tiling: false,
         }
     }
 
@@ -87,6 +186,9 @@ func Create() (*WindowManager, error){
         currWorkspace: &workspaces[0],
         workspaceIndex: 0,
         atoms: map[string]xproto.Atom{},
+        tiling: false,
+        layouts: createLayouts(),
+        gap: 6,
     }, nil
 }
 func fileExists(filename string) bool {
@@ -162,6 +264,7 @@ func (wm *WindowManager) Run(){
 
     cKeyCode := keybind.StrToKeycodes(XUtil, "c")[0]
     fKeyCode := keybind.StrToKeycodes(XUtil, "f")[0]
+    vKeyCode := keybind.StrToKeycodes(XUtil, "v")[0]
     wKeyCode := keybind.StrToKeycodes(XUtil, "w")[0]
     f1KeyCode := keybind.StrToKeycodes(XUtil, "f1")[0]
     f2KeyCode := keybind.StrToKeycodes(XUtil, "f2")[0]
@@ -180,6 +283,7 @@ func (wm *WindowManager) Run(){
     err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1|xproto.ModMaskShift, cKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
     err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, fKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
     err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, cKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, vKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
     err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, wKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
     err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, f1KeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
     err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, f2KeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
@@ -224,6 +328,9 @@ func (wm *WindowManager) Run(){
         "_NET_WM_STATE_BELOW",
         "_NET_WM_STATE_MAXIMIZED_HORZ",
         "_NET_WM_STATE_MAXIMIZED_VERT",
+        "_NET_WM_WINDOW_TYPE",
+        "_NET_WM_WINDOW_TYPE_DOCK",
+        "_NET_WM_STRUT_PARTIAL",
     }
 
     for _, name := range atoms {
@@ -260,7 +367,7 @@ func (wm *WindowManager) Run(){
             case xproto.MotionNotifyEvent:
                 ev := event.(xproto.MotionNotifyEvent)
                 if start.Child != 0&&ev.State&xproto.ModMask1!=0{
-                    if wm.currWorkspace.windows[start.Child]!=nil&&wm.currWorkspace.windows[start.Child].Fullscreen{
+                    if wm.tiling || (wm.currWorkspace.windows[start.Child]!=nil&&wm.currWorkspace.windows[start.Child].Fullscreen){
                         break
                     }
                     xdiff := ev.RootX - start.RootX
@@ -361,6 +468,8 @@ func (wm *WindowManager) Run(){
                         if err != nil {
                             fmt.Println("Couldn't force destroy:", err)
                         }
+                    }else if ev.Detail == vKeyCode{
+                        wm.toggleTiling()
                     }else if ev.Detail == fKeyCode{
                         wm.toggleFullScreen(ev.Child)
                     }else if ev.Detail == wKeyCode{
@@ -405,6 +514,7 @@ func (wm *WindowManager) Run(){
                             wm.currWorkspace.frametoclient[w]=client
                             wm.currWorkspace.windows[w]=&window
                             wm.currWorkspace.clients[client]=w 
+                            wm.fitToLayout()
                         case twoKeyCode:
                             client := wm.currWorkspace.frametoclient[w]
                             window := *wm.currWorkspace.windows[w]
@@ -415,6 +525,7 @@ func (wm *WindowManager) Run(){
                             wm.currWorkspace.frametoclient[w]=client
                             wm.currWorkspace.windows[w]=&window
                             wm.currWorkspace.clients[client]=w 
+                            wm.fitToLayout()
                         case threeKeyCode:
                             client := wm.currWorkspace.frametoclient[w]
                             window := *wm.currWorkspace.windows[w]
@@ -425,6 +536,7 @@ func (wm *WindowManager) Run(){
                             wm.currWorkspace.frametoclient[w]=client
                             wm.currWorkspace.windows[w]=&window
                             wm.currWorkspace.clients[client]=w 
+                            wm.fitToLayout()
                         case fourKeyCode:
                             client := wm.currWorkspace.frametoclient[w]
                             window := *wm.currWorkspace.windows[w]
@@ -434,7 +546,8 @@ func (wm *WindowManager) Run(){
                             wm.switchWorkspace(3)
                             wm.currWorkspace.frametoclient[w]=client
                             wm.currWorkspace.windows[w]=&window
-                            wm.currWorkspace.clients[client]=w 
+                            wm.currWorkspace.clients[client]=w
+                            wm.fitToLayout()
                         case fiveKeyCode:
                             client := wm.currWorkspace.frametoclient[w]
                             window := *wm.currWorkspace.windows[w]
@@ -445,6 +558,7 @@ func (wm *WindowManager) Run(){
                             wm.currWorkspace.frametoclient[w]=client
                             wm.currWorkspace.windows[w]=&window
                             wm.currWorkspace.clients[client]=w
+                            wm.fitToLayout()
                         case sixKeyCode:
                             client := wm.currWorkspace.frametoclient[w]
                             window := *wm.currWorkspace.windows[w]
@@ -455,6 +569,7 @@ func (wm *WindowManager) Run(){
                             wm.currWorkspace.frametoclient[w]=client
                             wm.currWorkspace.windows[w]=&window
                             wm.currWorkspace.clients[client]=w 
+                            wm.fitToLayout()
                         case sevenKeyCode:
                             client := wm.currWorkspace.frametoclient[w]
                             window := *wm.currWorkspace.windows[w]
@@ -465,6 +580,7 @@ func (wm *WindowManager) Run(){
                             wm.currWorkspace.frametoclient[w]=client
                             wm.currWorkspace.windows[w]=&window
                             wm.currWorkspace.clients[client]=w 
+                            wm.fitToLayout()
                         case eightKeyCode:
                             client := wm.currWorkspace.frametoclient[w]
                             window := *wm.currWorkspace.windows[w]
@@ -475,6 +591,7 @@ func (wm *WindowManager) Run(){
                             wm.currWorkspace.frametoclient[w]=client
                             wm.currWorkspace.windows[w]=&window
                             wm.currWorkspace.clients[client]=w 
+                            wm.fitToLayout()
                         case nineKeyCode:
                             client := wm.currWorkspace.frametoclient[w]
                             window := *wm.currWorkspace.windows[w]
@@ -485,6 +602,7 @@ func (wm *WindowManager) Run(){
                             wm.currWorkspace.frametoclient[w]=client
                             wm.currWorkspace.windows[w]=&window
                             wm.currWorkspace.clients[client]=w 
+                            wm.fitToLayout()
                         case zeroKeyCode:
                             client := wm.currWorkspace.frametoclient[w]
                             window := *wm.currWorkspace.windows[w]
@@ -495,8 +613,8 @@ func (wm *WindowManager) Run(){
                             wm.currWorkspace.frametoclient[w]=client
                             wm.currWorkspace.windows[w]=&window
                             wm.currWorkspace.clients[client]=w 
+                            wm.fitToLayout()
                         }     
-
                     }else{ 
                         switch ev.Detail{
                         case oneKeyCode:
@@ -520,6 +638,10 @@ func (wm *WindowManager) Run(){
                         case zeroKeyCode:
                             wm.switchWorkspace(9)
                         }
+                        if wm.tiling{
+                            //TODO:fit layout on window move workspace instead of later
+                            wm.fitToLayout()
+                        }
                     }
                 }
                 break
@@ -535,6 +657,166 @@ func (wm *WindowManager) Run(){
         }
     }
 }
+
+func (wm *WindowManager) getBar(vals []byte) (int, int, int, int){
+    var maxLeft, maxRight, maxTop, maxBottom int
+    left := int(binary.LittleEndian.Uint32(vals[0:4]))
+    right := int(binary.LittleEndian.Uint32(vals[4:8]))
+    top := int(binary.LittleEndian.Uint32(vals[8:12]))
+    bottom := int(binary.LittleEndian.Uint32(vals[12:16]))
+
+    if left > maxLeft {
+        maxLeft = left
+    }
+    if right > maxRight {
+        maxRight = right
+    }
+    if top > maxTop {
+        maxTop = top
+    }
+    if bottom > maxBottom {
+        maxBottom = bottom
+    }
+    return maxLeft, maxRight, maxTop, maxBottom
+}
+
+func (wm *WindowManager) createTilingSpace(){
+    windows,_ := xproto.QueryTree(wm.conn, wm.root).Reply()
+    X := 0
+    Y := 0
+    width := wm.width
+    height := wm.height
+
+    for _, window := range windows.Children{
+        attributes, _ := xproto.GetWindowAttributes(wm.conn, window).Reply()
+        if attributes.MapState == xproto.MapStateViewable{
+            atom := wm.atoms["_NET_WM_STRUT_PARTIAL"]
+            prop, err := xproto.GetProperty(wm.conn, false, window, atom, xproto.AtomCardinal, 0, 12).Reply()
+
+            if err != nil || prop == nil || prop.ValueLen < 4{
+                continue
+            }	
+
+            vals := prop.Value
+            if len(vals) < 16 {
+                continue // need at least 4 uint32s
+            }
+            left, right, top, bottom := wm.getBar(vals)
+
+            X = left
+            Y = top
+            width = wm.width - left - right
+            height = wm.height - top - bottom
+
+            // TODO: support multiple bars
+            break
+        }
+    }
+
+    fmt.Println("tiling container:", "X:", X, "Y:", Y, "Width:", width, "Height:", height)
+    wm.tilingspace = Space{
+        X: X,
+        Y: Y,
+        Width: width-6,
+        Height: height-6,
+    }
+}
+
+func (wm *WindowManager) fitToLayout(){
+    windowNum := len(wm.currWorkspace.frametoclient)
+    if windowNum >4||windowNum<1{
+        return
+    }
+    layout := wm.layouts[windowNum-1]
+    i:=0
+    for window, WindowData := range wm.currWorkspace.windows{
+        if WindowData.Fullscreen{
+            wm.toggleFullScreen(window)
+        }
+        layoutWindow := layout.Windows[i]
+        X := wm.tilingspace.X+int((float64(wm.tilingspace.Width)*layoutWindow.XPercentage))+wm.gap
+        Y := wm.tilingspace.Y+int((float64(wm.tilingspace.Height)*layoutWindow.YPercentage))+wm.gap
+        Width := (float64(wm.tilingspace.Width)*layoutWindow.WidthPercentage)-float64(wm.gap*2)
+        Height := (float64(wm.tilingspace.Height)*layoutWindow.HeightPercentage)-float64(wm.gap*2)
+        fmt.Println("window:", window, "X:", X, "Y:", Y, "Width:", Width, "Height:", Height)
+        wm.configureWindow(window, X, Y, int(Width), int(Height))
+        i++
+    }
+}
+
+func (wm *WindowManager) configureWindow(Frame xproto.Window, X, Y, Width, Height int){
+        err := xproto.ConfigureWindowChecked(wm.conn, Frame, xproto.ConfigWindowX | xproto.ConfigWindowY | xproto.ConfigWindowWidth|xproto.ConfigWindowHeight, []uint32{
+            uint32(X), uint32(Y), uint32(Width), uint32(Height),
+        }).Check()
+        if err != nil{
+            slog.Error("couldn't configure window!", "error:", err)
+            return
+        }
+        tree, _ := xproto.QueryTree(wm.conn, Frame).Reply()
+        if len(tree.Children)>0{
+            child := tree.Children[0]
+            err = xproto.ConfigureWindowChecked(wm.conn, child, xproto.ConfigWindowX | xproto.ConfigWindowY | xproto.ConfigWindowWidth|xproto.ConfigWindowHeight, []uint32{
+                0, 0, uint32(Width), uint32(Height),
+            }).Check()
+            if err != nil{
+                slog.Error("couldn't configure window!", "error:", err)
+                return
+            }
+        }
+}
+
+func (wm *WindowManager) toggleTiling(){
+    if !wm.tiling{
+        wm.enableTiling()
+        wm.tiling=true
+    }else{
+        wm.disableTiling()
+        wm.tiling=false
+    }
+}
+
+func (wm *WindowManager) disableTiling(){
+        wm.currWorkspace.tiling = false
+        fmt.Println("DISABLED TILING")
+        fmt.Println(len(wm.currWorkspace.windows))
+        for windowId, window := range wm.currWorkspace.windows{
+            if window.Fullscreen{
+                wm.toggleFullScreen(windowId)
+            }
+            wm.configureWindow(windowId, window.X, window.Y, window.Width, window.Height)
+        }
+}
+
+func (wm *WindowManager) enableTiling(){
+        wm.currWorkspace.tiling = true
+        for windowId, window := range wm.currWorkspace.windows{
+            if window.Fullscreen{
+                wm.toggleFullScreen(windowId)
+            }
+            attr, _ := xproto.GetGeometry(wm.conn, xproto.Drawable(windowId)).Reply()
+            wm.currWorkspace.windows[windowId] = &Window{
+                id: window.id,
+                X:int(attr.X),
+                Y:int(attr.Y),
+                Width: int(attr.Width),
+                Height: int(attr.Height),
+                Fullscreen: false,
+            }
+        }
+        fmt.Println("tiling")
+        wm.createTilingSpace()
+        wm.fitToLayout()
+}
+
+func (wm *WindowManager) clearTileContainer(){
+    for window, windowVal := range wm.currWorkspace.windows{
+        err := xproto.ReparentWindowChecked(wm.conn, window, wm.root,int16(windowVal.X), int16(windowVal.Y)).Check()
+        if err != nil{
+            slog.Error("couldn't reparent window", "error:", err)
+        }
+    }
+}
+
 func (wm *WindowManager) toggleFullScreen(Child xproto.Window){
     win := wm.currWorkspace.windows[Child]
     if win != nil{
@@ -661,24 +943,23 @@ func (wm *WindowManager) switchWorkspace(workspace int){
     }
 
     for frame := range wm.currWorkspace.frametoclient{
-        err := xproto.UnmapWindowChecked(wm.conn, frame).Check()
-        if err != nil{
-            slog.Error("couldn't unmap window", "error:", err)
-            return
-        }
+        xproto.UnmapWindowChecked(wm.conn, frame)
     }
 
     wm.currWorkspace = &wm.workspaces[workspace]
     wm.workspaceIndex = workspace
 
     for frame := range wm.currWorkspace.frametoclient{
-        err := xproto.MapWindowChecked(wm.conn, frame).Check()
-        if err != nil{
-            slog.Error("couldn't map window", "error:", err)
-            return
-        }
+        xproto.MapWindowChecked(wm.conn, frame)
     }
 
+    wm.conn.Sync()
+
+    if wm.tiling && !wm.currWorkspace.tiling{
+        wm.enableTiling()
+    }else if !wm.tiling && wm.currWorkspace.tiling{
+        wm.disableTiling()
+    }
     wm.broadcastWorkspace(workspace)
 }
 
@@ -800,6 +1081,7 @@ func (wm *WindowManager) OnUnmapNotify(event xproto.UnmapNotifyEvent){
             fmt.Println(index)
             wm.currWorkspace = &wm.workspaces[wm.workspaceIndex]
             wm.UnFrame(wm.currWorkspace.frametoclient[frame], true)
+            wm.fitToLayout()
             return
         }
     }
@@ -811,6 +1093,7 @@ func (wm *WindowManager) OnUnmapNotify(event xproto.UnmapNotifyEvent){
     }
 
     wm.UnFrame(event.Window, false)
+    wm.fitToLayout()
 }
 
 func (wm *WindowManager) UnFrame(w xproto.Window, unmapped bool){
@@ -892,6 +1175,12 @@ func shouldIgnoreWindow(conn *xgb.Conn, win xproto.Window) bool {
         slog.Error("Error getting _NET_WM_WINDOW_TYPE_SPLASH atom", "error", err)
         return false
     }
+    netWmPanel, err := xproto.InternAtom(conn, false, uint16(len("_NET_WM_WINDOW_TYPE_PANEL")), "_NET_WM_WINDOW_TYPE_PANEL").Reply()
+    if err != nil {
+        slog.Error("Error getting _NET_WM_WINDOW_TYPE_PANEL atom", "error", err)
+        return false
+    }
+
 
     netWmDialog, err := xproto.InternAtom(conn, false, uint16(len("_NET_WM_WINDOW_TYPE_DIALOG")), "_NET_WM_WINDOW_TYPE_DIALOG").Reply()
     if err != nil {
@@ -914,7 +1203,7 @@ func shouldIgnoreWindow(conn *xgb.Conn, win xproto.Window) bool {
     // Check if the window type matches any of the "ignore" types
     windowType := xproto.Atom(binary.LittleEndian.Uint32(actualType.Value))
 
-    if windowType == netWmSplash.Atom || windowType == netWmDialog.Atom || windowType == netWmNotification.Atom || windowType == netWmDock.Atom {
+    if windowType == netWmSplash.Atom || windowType == netWmDialog.Atom || windowType == netWmNotification.Atom || windowType == netWmDock.Atom||windowType==netWmPanel.Atom {
         return true
     }
 
@@ -936,6 +1225,9 @@ func (wm *WindowManager) OnMapRequest(event xproto.MapRequestEvent){
     } 
 
     wm.Frame(event.Window, false)
+    if wm.tiling{
+        wm.fitToLayout()
+    }
     err := xproto.MapWindowChecked(
         wm.conn,
         event.Window,
