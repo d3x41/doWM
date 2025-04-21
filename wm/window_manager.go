@@ -738,7 +738,7 @@ func (wm *WindowManager) fitToLayout(){
     i:=0
     for window, WindowData := range wm.currWorkspace.windows{
         if WindowData.Fullscreen{
-            wm.toggleFullScreen(window)
+            continue
         }
         layoutWindow := layout.Windows[i]
         X := wm.tilingspace.X+int((float64(wm.tilingspace.Width)*layoutWindow.XPercentage))+wm.gap
@@ -788,6 +788,7 @@ func (wm *WindowManager) disableTiling(){
         fmt.Println(len(wm.currWorkspace.windows))
         for windowId, window := range wm.currWorkspace.windows{
             if window.Fullscreen{
+                fmt.Println("from: disable tiling, toggling fullscreen on window", windowId)
                 wm.toggleFullScreen(windowId)
             }
             wm.configureWindow(windowId, window.X, window.Y, window.Width, window.Height)
@@ -798,6 +799,7 @@ func (wm *WindowManager) enableTiling(){
         wm.currWorkspace.tiling = true
         for windowId, window := range wm.currWorkspace.windows{
             if window.Fullscreen{
+                fmt.Println("from: enable tiling, toggling fullscreen on window", windowId)
                 wm.toggleFullScreen(windowId)
             }
             attr, _ := xproto.GetGeometry(wm.conn, xproto.Drawable(windowId)).Reply()
@@ -846,6 +848,7 @@ func (wm *WindowManager) toggleFullScreen(Child xproto.Window){
             if err != nil{
                 slog.Error("couldn't un fullscreen window", "error: ", err)
             }
+            wm.fitToLayout()
         }else{
             win.Fullscreen = true
             xproto.ConfigureWindow(wm.conn, Child, xproto.ConfigWindowStackMode, []uint32{xproto.StackModeAbove})
