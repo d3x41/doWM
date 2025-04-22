@@ -2,7 +2,7 @@ package main
 
 import (
     "log/slog"
-    "doWM/wm"
+    "github.com/BobdaProgrammer/doWM/wm"
 )
 
 func main(){
