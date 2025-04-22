@@ -1,6 +1,7 @@
 package wm
 
-import (
+import (	
+    "github.com/mattn/go-shellwords"
 	"encoding/binary"
 	"fmt"
 	"log/slog"
@@ -15,12 +16,33 @@ import (
 	"github.com/BurntSushi/xgb/xproto"
 	"github.com/BurntSushi/xgbutil"
 	"github.com/BurntSushi/xgbutil/keybind"
+	"github.com/knadh/koanf/v2"
+	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/knadh/koanf/providers/file"
 )
 
 var (
     XUtil *xgbutil.XUtil
 )
 
+var k = koanf.New(".")
+type Config struct{
+    Gap uint32 `koanf:"gaps"`
+    BorderUnactive uint32 `koanf:"unactive-border-color"`
+    BorderActive uint32 `koanf:"active-border-color"`
+    ModKey string `koanf:"ModKey"`
+    BorderWidth uint32 `koanf:"border-width"`
+    Keybinds []Keybind `koanf:"keybinds"`
+}
+
+
+type Keybind struct{
+    Keycode uint32
+    Key string `koanf:"key"`
+    Shift bool `koanf:"shift"`
+    Exec string `koanf:"exec"`
+    Role string `koanf:"role"`
+}
 type LayoutWindow struct{
     WidthPercentage, HeightPercentage, XPercentage, YPercentage float64
 }
@@ -59,7 +81,8 @@ type WindowManager struct{
     tiling bool
     tilingspace Space
     layouts []Layout
-    gap int
+    config Config
+    mod uint16
 }
 
 func createLayouts() ([]Layout){
@@ -143,6 +166,29 @@ func createLayouts() ([]Layout){
     }
 }
 
+func createConfig(f koanf.Provider) Config{ 
+    // Set defaults manually
+    cfg := Config{
+        Gap:            6,
+        BorderWidth:    3,
+        ModKey:         "Mod1",
+        BorderUnactive: 0x8bd5ca,
+        BorderActive:   0xa6da95,
+        Keybinds: []Keybind{},
+    }
+
+    // Load the config file
+    if err := k.Load(f, yaml.Parser()); err == nil {
+        // Unmarshal — existing keys override the defaults
+        k.UnmarshalWithConf("", &cfg, koanf.UnmarshalConf{Tag: "koanf", FlatPaths: false})
+
+    }else{
+        slog.Warn("couldn't load config, using defaults")
+    }
+
+    return cfg
+}
+
 func Create() (*WindowManager, error){
     X, err := xgb.NewConn()
     if err!=nil{
@@ -170,6 +216,7 @@ func Create() (*WindowManager, error){
         return nil, fmt.Errorf("couldn't get screen dimensions: %w", err)
     }
 
+
     workspaces := make([]Workspace, 10)
     for i := range workspaces{
         workspaces[i] = Workspace{ 
@@ -191,13 +238,37 @@ func Create() (*WindowManager, error){
         atoms: map[string]xproto.Atom{},
         tiling: false,
         layouts: createLayouts(),
-        gap: 6,
     }, nil
 }
 func fileExists(filename string) bool {
 	_, err := os.Stat(filename)
 	return !os.IsNotExist(err)
 }
+
+func (wm *WindowManager) createKeybind(kb *Keybind) Keybind{
+    code := keybind.StrToKeycodes(XUtil, kb.Key)
+    if len(code)<1{
+        return Keybind{
+            Keycode: 0,
+            Key: "",
+            Shift: false,
+            Exec: "",
+        }
+    }
+    KeyCode := code[0]
+    kb.Keycode=uint32(KeyCode)
+    Mask := wm.mod
+    if kb.Shift{
+        Mask = Mask | xproto.ModMaskShift
+    }
+    err := xproto.GrabKeyChecked(wm.conn, true, wm.root, Mask, KeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+    if err != nil{
+        slog.Error("couldn't create keybind", "error:", err)
+    }
+
+    return *kb
+}
+
 func (wm *WindowManager) Run(){
     fmt.Println("window manager up and running")
 
@@ -226,6 +297,12 @@ func (wm *WindowManager) Run(){
             return
         }
     }
+
+    home, _ := os.UserHomeDir()
+    f := file.Provider(filepath.Join(home, ".config", "doWM", "doWM.yml"))
+    cfg:=createConfig(f)
+    wm.config = cfg
+    //TODO: make auto-reload
 
     wm.broadcastWorkspace(0)
     wm.broadcastWorkspaceCount()
@@ -269,56 +346,59 @@ func (wm *WindowManager) Run(){
         return
     }
 
-    cKeyCode := keybind.StrToKeycodes(XUtil, "c")[0]
-    fKeyCode := keybind.StrToKeycodes(XUtil, "f")[0]
-    vKeyCode := keybind.StrToKeycodes(XUtil, "v")[0]
-    wKeyCode := keybind.StrToKeycodes(XUtil, "w")[0]
-    f1KeyCode := keybind.StrToKeycodes(XUtil, "f1")[0]
-    f2KeyCode := keybind.StrToKeycodes(XUtil, "f2")[0]
-    f3KeyCode := keybind.StrToKeycodes(XUtil, "f3")[0]
-    oneKeyCode := keybind.StrToKeycodes(XUtil, "1")[0]
-    twoKeyCode := keybind.StrToKeycodes(XUtil, "2")[0]
-    threeKeyCode := keybind.StrToKeycodes(XUtil, "3")[0]
-    fourKeyCode := keybind.StrToKeycodes(XUtil, "4")[0]
-    fiveKeyCode := keybind.StrToKeycodes(XUtil, "5")[0]
-    sixKeyCode := keybind.StrToKeycodes(XUtil, "6")[0]
-    sevenKeyCode := keybind.StrToKeycodes(XUtil, "7")[0]
-    eightKeyCode := keybind.StrToKeycodes(XUtil, "8")[0]
-    nineKeyCode := keybind.StrToKeycodes(XUtil, "9")[0]
-    zeroKeyCode := keybind.StrToKeycodes(XUtil, "0")[0]
+    var mMask uint16
+    switch(wm.config.ModKey){
+        case "Mod1":
+            mMask=xproto.ModMask1
+        case "Mod2":
+            mMask=xproto.ModMask2
+        case "Mod3":
+            mMask=xproto.ModMask3
+        case "Mod4":
+            mMask=xproto.ModMask4
+        case "Mod5":
+            mMask=xproto.ModMask5 
+    }
 
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1|xproto.ModMaskShift, cKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, fKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, cKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, vKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, wKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, f1KeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, f2KeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, f3KeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, oneKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, twoKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, threeKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, fourKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, fiveKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, sixKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, sevenKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, eightKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, nineKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1, zeroKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1|xproto.ModMaskShift, oneKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1|xproto.ModMaskShift, twoKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1|xproto.ModMaskShift, threeKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1|xproto.ModMaskShift, fourKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1|xproto.ModMaskShift, fiveKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1|xproto.ModMaskShift, sixKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1|xproto.ModMaskShift, sevenKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1|xproto.ModMaskShift, eightKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1|xproto.ModMaskShift, nineKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
-    err = xproto.GrabKeyChecked(wm.conn, true, wm.root, xproto.ModMask1|xproto.ModMaskShift, zeroKeyCode , xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+    wm.mod = mMask
+    
+    for i, kb := range wm.config.Keybinds{
+        wm.config.Keybinds[i] = wm.createKeybind(&kb)
+    }
+    /*
+    wm.createKeybind(&Keybind{ Key: "w", Shift: false , Keycode: 0})*/
+    wm.config.Keybinds = append(wm.config.Keybinds, []Keybind{
+    wm.createKeybind(&Keybind{ Key: "c", Shift: false , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "c", Shift: true , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "v", Shift: false , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "f", Shift: false, Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "0", Shift: false , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "1", Shift: false , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "2", Shift: false , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "3", Shift: false , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "4", Shift: false , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "5", Shift: false , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "6", Shift: false , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "7", Shift: false , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "8", Shift: false , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "9", Shift: false , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "0", Shift: true , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "1", Shift: true , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "2", Shift: true , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "3", Shift: true , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "4", Shift: true , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "5", Shift: true , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "6", Shift: true , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "7", Shift: true , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "8", Shift: true , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "9", Shift: true , Keycode: 0}),
+    }...)
 
-    err = xproto.GrabButtonChecked(wm.conn, true, wm.root, 	uint16(xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease | xproto.EventMaskPointerMotion), xproto.GrabModeAsync, xproto.GrabModeAsync, xproto.WindowNone, xproto.AtomNone, xproto.ButtonIndex1, xproto.ModMask1).Check()
+    fmt.Println(wm.config.Keybinds)
 
-    err = xproto.GrabButtonChecked(wm.conn, true, wm.root, 	uint16(xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease | xproto.EventMaskPointerMotion), xproto.GrabModeAsync, xproto.GrabModeAsync, xproto.WindowNone, xproto.AtomNone, xproto.ButtonIndex3, xproto.ModMask1).Check()
+    err = xproto.GrabButtonChecked(wm.conn, true, wm.root, 	uint16(xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease | xproto.EventMaskPointerMotion), xproto.GrabModeAsync, xproto.GrabModeAsync, xproto.WindowNone, xproto.AtomNone, xproto.ButtonIndex1, mMask).Check()
+
+    err = xproto.GrabButtonChecked(wm.conn, true, wm.root, 	uint16(xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease | xproto.EventMaskPointerMotion), xproto.GrabModeAsync, xproto.GrabModeAsync, xproto.WindowNone, xproto.AtomNone, xproto.ButtonIndex3, mMask).Check()
 
     if err!=nil{
         slog.Error("couldn't grab window+c key", "error:", err.Error())
@@ -373,7 +453,7 @@ func (wm *WindowManager) Run(){
                 start.Child = 0
             case xproto.MotionNotifyEvent:
                 ev := event.(xproto.MotionNotifyEvent)
-                if start.Child != 0&&ev.State&xproto.ModMask1!=0{
+                if start.Child != 0&&ev.State&mMask!=0{
                     if wm.tiling || (wm.currWorkspace.windows[start.Child]!=nil&&wm.currWorkspace.windows[start.Child].Fullscreen){
                         break
                     }
@@ -446,6 +526,8 @@ func (wm *WindowManager) Run(){
                     delete(wm.currWorkspace.frametoclient, wm.currWorkspace.clients[ev.Window])
                     delete(wm.currWorkspace.windows, wm.currWorkspace.clients[ev.Window])
                     delete(wm.currWorkspace.clients, ev.Window)
+                    wm.UnFrame(wm.currWorkspace.clients[ev.Window], true)
+                    wm.fitToLayout()
                 }
                 break
             case xproto.EnterNotifyEvent:
@@ -463,193 +545,85 @@ func (wm *WindowManager) Run(){
             case xproto.KeyPressEvent:
                 fmt.Println("keyPress")
                 ev := event.(xproto.KeyPressEvent)
-                if ev.State&xproto.ModMask1!=0{
-                    if ev.Detail==cKeyCode{
-                        SendWmDelete(wm.conn, wm.currWorkspace.frametoclient[ev.Child])
-                        fmt.Println(wm.currWorkspace.frametoclient[ev.Child])
-                        wm.UnFrame(wm.currWorkspace.frametoclient[ev.Child], false)
+                if ev.State&mMask!=0{
+                    for _, kb := range wm.config.Keybinds{
+                        if(ev.Detail == xproto.Keycode(kb.Keycode)&&(ev.State&(mMask|xproto.ModMaskShift) == (mMask|xproto.ModMaskShift)==kb.Shift)){
 
-                    }else if ev.Detail == cKeyCode && ev.State&(xproto.ModMask1|xproto.ModMaskShift) == (xproto.ModMask1|xproto.ModMaskShift) {
-                        // Mod + Shift + C → force close
-                        err := xproto.DestroyWindowChecked(wm.conn, wm.currWorkspace.frametoclient[ev.Child]).Check()
-                        if err != nil {
-                            fmt.Println("Couldn't force destroy:", err)
-                        }
-                    }else if ev.Detail == vKeyCode{
-                        wm.toggleTiling()
-                    }else if ev.Detail == fKeyCode{
-                        wm.toggleFullScreen(ev.Child)
-                    }else if ev.Detail == wKeyCode{
-                        err := exec.Command("launcher_t2").Start()
-                        if err != nil{
-                            slog.Error("couldn't run rofi", "error:", err)
-                        }
-                    }else if ev.Detail == f1KeyCode{
-                        err := exec.Command("pactl", "set-sink-mute", "@DEFAULT_SINK@", "toggle").Start()
-                        if err != nil{
-                            slog.Error("couldn't toggle mute", "error:", err)
-                        }   
-                    }else if ev.Detail == f2KeyCode{
-                        err := exec.Command("pactl", "set-sink-volume", "@DEFAULT_SINK@", "-5%").Start()
-                        if err != nil{
-                            slog.Error("couldn't decrease volume", "error:", err)
-                        }
-                    }else if ev.Detail == f3KeyCode{
-                        err := exec.Command("pactl", "set-sink-volume", "@DEFAULT_SINK@", "+5%").Start()
-                        if err != nil{
-                            slog.Error("couldn't increase volume", "error:", err)
-                        }
-                    }
+                            if kb.Exec!=""{
+                                fmt.Println("executing:", kb.Exec)
+                                runCommand(kb.Exec)
+                            }
+                            switch(kb.Role){
+                                case "quit":
+                                        SendWmDelete(wm.conn, wm.currWorkspace.frametoclient[ev.Child])
+                                        fmt.Println(wm.currWorkspace.frametoclient[ev.Child])
+                                        break
+                                case "force-quit":
+                                    // Mod + Shift + C → force close
+                                    err := xproto.DestroyWindowChecked(wm.conn, wm.currWorkspace.frametoclient[ev.Child]).Check()
+                                    if err != nil {
+                                        fmt.Println("Couldn't force destroy:", err)
+                                    }
+                                    break
+                                case "toggle-tiling":
+                                    wm.toggleTiling()
+                                    break
+                                case "toggle-fullscreen":
+                                    wm.toggleFullScreen(ev.Child)
+                            }
+                            switch(kb.Key){
+                                case "0", "1", "2", "3", "4", "5", "6", "7", "8", "9":
+                                    w := ev.Child
+                                    var client xproto.Window
+                                    var window Window
+                                    if kb.Shift{
+                                        client = wm.currWorkspace.frametoclient[w]
+                                        window = *wm.currWorkspace.windows[w]
+                                        fmt.Println("moving window")
+                                        xproto.ConfigureWindow(
+                                            wm.conn,
+                                            w,
+                                            xproto.ConfigWindowStackMode,
+                                            []uint32{xproto.StackModeAbove},
+                                        )
+                                        delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
+                                        delete(wm.currWorkspace.windows, w)
+                                        delete(wm.currWorkspace.frametoclient, w)
+                                    }                        
+                                    switch kb.Key{
+                                    case "1":
+                                        wm.switchWorkspace(0)
+                                    case "2":
+                                        wm.switchWorkspace(1)
+                                    case "3":
+                                        wm.switchWorkspace(2)
+                                    case "4":
+                                        wm.switchWorkspace(3)
+                                    case "5":
+                                        wm.switchWorkspace(4)
+                                    case "6":
+                                        wm.switchWorkspace(5)
+                                    case "7":
+                                        wm.switchWorkspace(6)
+                                    case "8":
+                                        wm.switchWorkspace(7)
+                                    case "9":
+                                        wm.switchWorkspace(8)
+                                    case "0":
+                                        wm.switchWorkspace(9)
+                                    }
+                                    if kb.Shift{
+                                        wm.currWorkspace.frametoclient[w]=client
+                                        wm.currWorkspace.windows[w]=&window
+                                        wm.currWorkspace.clients[client]=w 
+                                    }
+                                    wm.fitToLayout()
+                                    
+                                    break
+                                }
+                            }
 
-                    if ev.State&(xproto.ModMask1|xproto.ModMaskShift) == (xproto.ModMask1|xproto.ModMaskShift)&&ev.Child!=wm.root&&wm.currWorkspace.windows[ev.Child]!=nil{
-                        fmt.Println("moving window")
-                        w := ev.Child
-                        xproto.ConfigureWindow(
-                            wm.conn,
-                            w,
-                            xproto.ConfigWindowStackMode,
-                            []uint32{xproto.StackModeAbove},
-                        )
-                        switch ev.Detail{
-                        case oneKeyCode:
-                            client := wm.currWorkspace.frametoclient[w]
-                            window := *wm.currWorkspace.windows[w]
-                            delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
-                            delete(wm.currWorkspace.windows, w)
-                            delete(wm.currWorkspace.frametoclient, w)
-                            wm.switchWorkspace(0)
-                            wm.currWorkspace.frametoclient[w]=client
-                            wm.currWorkspace.windows[w]=&window
-                            wm.currWorkspace.clients[client]=w 
-                            wm.fitToLayout()
-                        case twoKeyCode:
-                            client := wm.currWorkspace.frametoclient[w]
-                            window := *wm.currWorkspace.windows[w]
-                            delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
-                            delete(wm.currWorkspace.windows, w)
-                            delete(wm.currWorkspace.frametoclient, w)
-                            wm.switchWorkspace(1)
-                            wm.currWorkspace.frametoclient[w]=client
-                            wm.currWorkspace.windows[w]=&window
-                            wm.currWorkspace.clients[client]=w 
-                            wm.fitToLayout()
-                        case threeKeyCode:
-                            client := wm.currWorkspace.frametoclient[w]
-                            window := *wm.currWorkspace.windows[w]
-                            delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
-                            delete(wm.currWorkspace.windows, w)
-                            delete(wm.currWorkspace.frametoclient, w)
-                            wm.switchWorkspace(2)
-                            wm.currWorkspace.frametoclient[w]=client
-                            wm.currWorkspace.windows[w]=&window
-                            wm.currWorkspace.clients[client]=w 
-                            wm.fitToLayout()
-                        case fourKeyCode:
-                            client := wm.currWorkspace.frametoclient[w]
-                            window := *wm.currWorkspace.windows[w]
-                            delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
-                            delete(wm.currWorkspace.windows, w)
-                            delete(wm.currWorkspace.frametoclient, w)
-                            wm.switchWorkspace(3)
-                            wm.currWorkspace.frametoclient[w]=client
-                            wm.currWorkspace.windows[w]=&window
-                            wm.currWorkspace.clients[client]=w
-                            wm.fitToLayout()
-                        case fiveKeyCode:
-                            client := wm.currWorkspace.frametoclient[w]
-                            window := *wm.currWorkspace.windows[w]
-                            delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
-                            delete(wm.currWorkspace.windows, w)
-                            delete(wm.currWorkspace.frametoclient, w)
-                            wm.switchWorkspace(4)
-                            wm.currWorkspace.frametoclient[w]=client
-                            wm.currWorkspace.windows[w]=&window
-                            wm.currWorkspace.clients[client]=w
-                            wm.fitToLayout()
-                        case sixKeyCode:
-                            client := wm.currWorkspace.frametoclient[w]
-                            window := *wm.currWorkspace.windows[w]
-                            delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
-                            delete(wm.currWorkspace.windows, w)
-                            delete(wm.currWorkspace.frametoclient, w)
-                            wm.switchWorkspace(5)
-                            wm.currWorkspace.frametoclient[w]=client
-                            wm.currWorkspace.windows[w]=&window
-                            wm.currWorkspace.clients[client]=w 
-                            wm.fitToLayout()
-                        case sevenKeyCode:
-                            client := wm.currWorkspace.frametoclient[w]
-                            window := *wm.currWorkspace.windows[w]
-                            delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
-                            delete(wm.currWorkspace.windows, w)
-                            delete(wm.currWorkspace.frametoclient, w)
-                            wm.switchWorkspace(6)
-                            wm.currWorkspace.frametoclient[w]=client
-                            wm.currWorkspace.windows[w]=&window
-                            wm.currWorkspace.clients[client]=w 
-                            wm.fitToLayout()
-                        case eightKeyCode:
-                            client := wm.currWorkspace.frametoclient[w]
-                            window := *wm.currWorkspace.windows[w]
-                            delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
-                            delete(wm.currWorkspace.windows, w)
-                            delete(wm.currWorkspace.frametoclient, w)
-                            wm.switchWorkspace(7)
-                            wm.currWorkspace.frametoclient[w]=client
-                            wm.currWorkspace.windows[w]=&window
-                            wm.currWorkspace.clients[client]=w 
-                            wm.fitToLayout()
-                        case nineKeyCode:
-                            client := wm.currWorkspace.frametoclient[w]
-                            window := *wm.currWorkspace.windows[w]
-                            delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
-                            delete(wm.currWorkspace.windows, w)
-                            delete(wm.currWorkspace.frametoclient, w)
-                            wm.switchWorkspace(8)
-                            wm.currWorkspace.frametoclient[w]=client
-                            wm.currWorkspace.windows[w]=&window
-                            wm.currWorkspace.clients[client]=w 
-                            wm.fitToLayout()
-                        case zeroKeyCode:
-                            client := wm.currWorkspace.frametoclient[w]
-                            window := *wm.currWorkspace.windows[w]
-                            delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
-                            delete(wm.currWorkspace.windows, w)
-                            delete(wm.currWorkspace.frametoclient, w)
-                            wm.switchWorkspace(9)
-                            wm.currWorkspace.frametoclient[w]=client
-                            wm.currWorkspace.windows[w]=&window
-                            wm.currWorkspace.clients[client]=w 
-                            wm.fitToLayout()
-                        }     
-                    }else{ 
-                        switch ev.Detail{
-                        case oneKeyCode:
-                            wm.switchWorkspace(0)
-                        case twoKeyCode:
-                            wm.switchWorkspace(1)
-                        case threeKeyCode:
-                            wm.switchWorkspace(2)
-                        case fourKeyCode:
-                            wm.switchWorkspace(3)
-                        case fiveKeyCode:
-                            wm.switchWorkspace(4)
-                        case sixKeyCode:
-                            wm.switchWorkspace(5)
-                        case sevenKeyCode:
-                            wm.switchWorkspace(6)
-                        case eightKeyCode:
-                            wm.switchWorkspace(7)
-                        case nineKeyCode:
-                            wm.switchWorkspace(8)
-                        case zeroKeyCode:
-                            wm.switchWorkspace(9)
                         }
-                        if wm.tiling{
-                            //TODO:fit layout on window move workspace instead of later
-                            wm.fitToLayout()
-                        }
-                    }
                 }
                 break
             case xproto.ClientMessageEvent:
@@ -664,7 +638,21 @@ func (wm *WindowManager) Run(){
         }
     }
 }
-
+func runCommand(cmdStr string) {
+	parser := shellwords.NewParser()
+	args, err := parser.Parse(cmdStr)
+	if err != nil {
+        slog.Error("parse error:", "error:", err)
+		return
+	}
+    if len(args)<2{
+        cmd := exec.Command(args[0])
+        cmd.Run()
+        return
+    }
+	cmd := exec.Command(args[0], args[1:]...)
+	cmd.Run()
+}
 func (wm *WindowManager) getBar(vals []byte) (int, int, int, int){
     var maxLeft, maxRight, maxTop, maxBottom int
     left := int(binary.LittleEndian.Uint32(vals[0:4]))
@@ -730,6 +718,9 @@ func (wm *WindowManager) createTilingSpace(){
 }
 
 func (wm *WindowManager) fitToLayout(){
+    if !wm.tiling{
+        return
+    }
     windowNum := len(wm.currWorkspace.frametoclient)
     if windowNum >4||windowNum<1{
         return
@@ -741,10 +732,10 @@ func (wm *WindowManager) fitToLayout(){
             continue
         }
         layoutWindow := layout.Windows[i]
-        X := wm.tilingspace.X+int((float64(wm.tilingspace.Width)*layoutWindow.XPercentage))+wm.gap
-        Y := wm.tilingspace.Y+int((float64(wm.tilingspace.Height)*layoutWindow.YPercentage))+wm.gap
-        Width := (float64(wm.tilingspace.Width)*layoutWindow.WidthPercentage)-float64(wm.gap*2)
-        Height := (float64(wm.tilingspace.Height)*layoutWindow.HeightPercentage)-float64(wm.gap*2)
+        X := wm.tilingspace.X+int((float64(wm.tilingspace.Width)*layoutWindow.XPercentage))+int(wm.config.Gap)
+        Y := wm.tilingspace.Y+int((float64(wm.tilingspace.Height)*layoutWindow.YPercentage))+int(wm.config.Gap)
+        Width := (float64(wm.tilingspace.Width)*layoutWindow.WidthPercentage)-float64(wm.config.Gap*2)
+        Height := (float64(wm.tilingspace.Height)*layoutWindow.HeightPercentage)-float64(wm.config.Gap*2)
         fmt.Println("window:", window, "X:", X, "Y:", Y, "Width:", Width, "Height:", Height)
         wm.configureWindow(window, X, Y, int(Width), int(Height))
         i++
@@ -774,11 +765,11 @@ func (wm *WindowManager) configureWindow(Frame xproto.Window, X, Y, Width, Heigh
 
 func (wm *WindowManager) toggleTiling(){
     if !wm.tiling{
-        wm.enableTiling()
         wm.tiling=true
+        wm.enableTiling()
     }else{
-        wm.disableTiling()
         wm.tiling=false
+        wm.disableTiling()
     }
 }
 
@@ -836,7 +827,7 @@ func (wm *WindowManager) toggleFullScreen(Child xproto.Window){
                 Child,
                 xproto.ConfigWindowX | xproto.ConfigWindowY |
                 xproto.ConfigWindowWidth | xproto.ConfigWindowHeight | xproto.ConfigWindowBorderWidth,
-                []uint32{uint32(win.X), uint32(win.Y), uint32(win.Width), uint32(win.Height), 3},
+                []uint32{uint32(win.X), uint32(win.Y), uint32(win.Width), uint32(win.Height), wm.config.BorderWidth},
             ).Check()
             err = xproto.ConfigureWindowChecked(
                 wm.conn,
@@ -1018,8 +1009,7 @@ func SendWmDelete(conn *xgb.Conn, window xproto.Window) error {
 }
 
 func (wm *WindowManager) OnLeaveNotify(event xproto.LeaveNotifyEvent){
-    const BorderWidth = 3
-    const Col = 0x8bd5ca
+    Col := wm.config.BorderUnactive
 
     err := xproto.ChangeWindowAttributesChecked(
         wm.conn,
@@ -1037,8 +1027,7 @@ func (wm *WindowManager) OnLeaveNotify(event xproto.LeaveNotifyEvent){
 
 func (wm *WindowManager) OnEnterNotify(event xproto.EnterNotifyEvent){
     err:=xproto.SetInputFocusChecked(wm.conn, xproto.InputFocusPointerRoot, event.Event, xproto.TimeCurrentTime).Check()
-    const BorderWidth = 3
-    const Col = 0xa6da95
+    Col := wm.config.BorderActive
     err = xproto.ChangeWindowAttributesChecked(
         wm.conn,
         event.Event,
@@ -1256,9 +1245,8 @@ func (wm *WindowManager) Frame(w xproto.Window, createdBeforeWM bool){
         fmt.Println("Already framed", w)
         return
     }
-    const BorderWidth = 3
-    //const BorderCol = 0xb7bdf8
-    const Col = 0x8bd5ca
+    BorderWidth := wm.config.BorderWidth
+    Col := wm.config.BorderUnactive
 
     geometry, err :=xproto.GetGeometry(wm.conn, xproto.Drawable(w)).Reply()
 
@@ -1312,7 +1300,7 @@ func (wm *WindowManager) Frame(w xproto.Window, createdBeforeWM bool){
         int16(topLeftY),
         geometry.Width,
         geometry.Height,
-        BorderWidth,
+        uint16(BorderWidth),
         xproto.WindowClassInputOutput,
         xproto.WindowNone,
         xproto.CwBackPixel|xproto.CwBorderPixel|xproto.CwEventMask,
