@@ -95,6 +95,43 @@ type WindowManager struct{
     mod uint16
 }
 
+func (wm *WindowManager) cursor(){
+	// Load the default cursor ("left_ptr") from the theme
+	cursorFont, err := xproto.NewFontId(wm.conn)
+	if err != nil {
+        slog.Error("Failed to allocate font ID:", "error:", err)
+        return
+	}
+
+	cursorID, _ := xproto.NewCursorId(wm.conn)
+
+	// Open the cursor font
+	err = xproto.OpenFontChecked(wm.conn, cursorFont, uint16(len("cursor")), "cursor").Check()
+	if err != nil {
+        slog.Error("Failed to open cursor font:","error:" ,err)
+        return
+	}
+
+	// Create a cursor from the font - 68 = "left_ptr" in the standard cursor font
+	// You can look up other cursor IDs from X11 cursor font tables if you want other styles
+	err = xproto.CreateGlyphCursorChecked(
+		wm.conn, cursorID, cursorFont, cursorFont,
+		68, 69, // source and mask glyph (left_ptr)
+		255, 255, 255,   // foreground RGB
+		0, 0, 0).  // background RGB
+		Check()
+	if err != nil {
+        slog.Error("Failed to create cursor: %v","error:", err)
+	}
+
+	// Set the cursor on the root window
+	err = xproto.ChangeWindowAttributesChecked(
+		wm.conn, wm.root, xproto.CwCursor, []uint32{uint32(cursorID)}).Check()
+	if err != nil {
+        slog.Error("Failed to set cursor on root window: %v", "error:",err)
+	}
+}
+
 // creates simple tiling layouts for 1-4 windows, any more is simply left on top to be moved
 func createLayouts() ([]Layout){
     return []Layout{
@@ -176,6 +213,8 @@ func createLayouts() ([]Layout){
         },
     }
 }
+
+
 
 // read and create config, if certain values, aren't provided, use the defualt values
 func createConfig(f koanf.Provider) Config{ 
@@ -317,6 +356,8 @@ func (wm *WindowManager) Run(){
             return
         }
     }
+
+    wm.cursor()
 
     // retrieve config and set values
     home, _ := os.UserHomeDir()
@@ -588,6 +629,7 @@ func (wm *WindowManager) Run(){
                             if kb.Exec!=""{
                                 fmt.Println("executing:", kb.Exec)
                                 runCommand(kb.Exec)
+                                fmt.Println("excuted")
                             }
                             switch(kb.Role){
                                 case "quit":
@@ -683,13 +725,16 @@ func runCommand(cmdStr string) {
         slog.Error("parse error:", "error:", err)
 		return
 	}
+    if len(args)==0{
+        return
+    }
     if len(args)<2{
         cmd := exec.Command(args[0])
-        cmd.Run()
+        cmd.Start()
         return
     }
 	cmd := exec.Command(args[0], args[1:]...)
-	cmd.Run()
+	cmd.Start()
 }
 func (wm *WindowManager) getBar(vals []byte) (int, int, int, int){
     // calculates where the bar is (more explanitary in createTilingSpace)
