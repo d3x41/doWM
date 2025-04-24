@@ -21,6 +21,9 @@
 ## Description
 doWM is a mainly floating but also tiling window manager for X11 completely written in golang.
 
+## Installation
+Currently the best way is to build from source
+
 ## screenshots
 <div align="center">
 <img src="https://github.com/BobdaProgrammer/doWM/blob/main/images/floating.png?raw=true" width="500px">
