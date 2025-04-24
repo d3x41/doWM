@@ -25,6 +25,8 @@ active-border-color: 0xa6da95
 # - force-quit
 # - toggle-tiling
 # - toggle-fullscreen
+# 
+# note: if you want to execute a file like ~/script.sh, then use sh -c ~/script.sh
 keybinds:
   - key: "w"
     shift: false

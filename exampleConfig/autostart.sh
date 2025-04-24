@@ -1,5 +1,5 @@
 #!/bin/bash
 
-feh --bg-scale ~/wallpapers/current/warm_forest.png
+feh --bg-scale ~/wallpaper.png
 
 polybar &
