@@ -235,6 +235,7 @@ func createConfig(f koanf.Provider) Config{
 
     }else{
         slog.Warn("couldn't load config, using defaults")
+        exec.Command("notify-send", "'error in doWM config, using defaults'").Start()
     }
 
     return cfg
