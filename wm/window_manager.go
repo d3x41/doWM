@@ -502,6 +502,9 @@ func (wm *WindowManager) Run(){
         if event == nil{
             continue
         }
+        if len(wm.currWorkspace.frametoclient)==0{
+            xproto.SetInputFocusChecked(wm.conn, xproto.InputFocusPointerRoot, wm.root, xproto.TimeCurrentTime).Check()
+        }
         switch event.(type){
             case xproto.ButtonPressEvent:
                 // set values on current window, used later with moving and resizing
@@ -597,12 +600,22 @@ func (wm *WindowManager) Run(){
                 fmt.Println(ev.Event)
                 // if the destroy notify has come through but we haven't registered any kind of deletion then handle it
                 if _, ok := wm.currWorkspace.clients[ev.Window]; ok{
+                    wm.UnFrame(wm.currWorkspace.clients[ev.Window], true)
                     delete(wm.currWorkspace.frametoclient, wm.currWorkspace.clients[ev.Window])
                     delete(wm.currWorkspace.windows, wm.currWorkspace.clients[ev.Window])
                     delete(wm.currWorkspace.clients, ev.Window)
-                    wm.UnFrame(wm.currWorkspace.clients[ev.Window], true)
+                    fmt.Println("removed window from records")
+                    fmt.Println("fitting to layout...")
                     wm.fitToLayout()
                 }
+                if _, ok := wm.currWorkspace.frametoclient[ev.Window]; ok{
+                    wm.UnFrame(wm.currWorkspace.frametoclient[ev.Window], true)
+                    delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[ev.Window])
+                    delete(wm.currWorkspace.frametoclient, ev.Window)
+                    delete(wm.currWorkspace.windows, ev.Window)
+                    wm.fitToLayout()
+                }
+                fmt.Println("finished destroying")
                 break
             case xproto.EnterNotifyEvent:
                 // when we enter the frame, change the border color
@@ -634,9 +647,11 @@ func (wm *WindowManager) Run(){
                             }
                             switch(kb.Role){
                                 case "quit":
-                                        // EMWH way of politely saying to destroy
-                                        SendWmDelete(wm.conn, wm.currWorkspace.frametoclient[ev.Child])
-                                        fmt.Println(wm.currWorkspace.frametoclient[ev.Child])
+                                        if _, ok := wm.currWorkspace.frametoclient[ev.Child]; ok{
+                                            // EMWH way of politely saying to destroy
+                                            wm.SendWmDelete(wm.conn, wm.currWorkspace.frametoclient[ev.Child])
+                                            fmt.Println("closing window:", wm.currWorkspace.frametoclient[ev.Child], "frame:", ev.Child)
+                                        }
                                         break
                                 case "force-quit":
                                     // force close
@@ -812,6 +827,7 @@ func (wm *WindowManager) fitToLayout(){
     // if there are more than 4 windows then just don't do it
     windowNum := len(wm.currWorkspace.frametoclient)
     if windowNum >4||windowNum<1{
+        fmt.Println("too many or too few windows to fit to layout in workspace", wm.workspaceIndex+1)
         return
     }
     layout := wm.layouts[windowNum-1]
@@ -1059,7 +1075,7 @@ func (wm *WindowManager) switchWorkspace(workspace int){
     wm.broadcastWorkspace(workspace)
 }
 
-func SendWmDelete(conn *xgb.Conn, window xproto.Window) error {
+func (wm *WindowManager) SendWmDelete(conn *xgb.Conn, window xproto.Window) error {
     // polite EMWH way of telling the window to delete itself
     wmProtocolsAtom, _ := xproto.InternAtom(conn, true, uint16(len("WM_PROTOCOLS")), "WM_PROTOCOLS").Reply()
     wmDeleteAtom, _ := xproto.InternAtom(conn, true, uint16(len("WM_DELETE_WINDOW")), "WM_DELETE_WINDOW").Reply()
@@ -1200,7 +1216,6 @@ func (wm *WindowManager) UnFrame(w xproto.Window, unmapped bool){
     frame := wm.currWorkspace.clients[w]
 
     // if it is already unmapped then no need to do it again
-    if(!unmapped){
         err := xproto.UnmapWindowChecked(
             wm.conn,
             frame,
@@ -1210,17 +1225,17 @@ func (wm *WindowManager) UnFrame(w xproto.Window, unmapped bool){
             slog.Error("couldn't unmap frame", "error:", err.Error())
             return
         }
-    }
 
     // take the client from the frame to the root, so we can delete the frame
-    err := xproto.ReparentWindowChecked(
+    err = xproto.ReparentWindowChecked(
         wm.conn, 
         w,
         wm.root,
         0, 0,
     ).Check()
     if err!=nil{
-        slog.Error("couldn't remap window during unmapping", "error:", err.Error())
+        slog.Error("couldn't reparent window during unmapping", "error:", err.Error())
+        return
     }
 
     // delete window from x11 set
