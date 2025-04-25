@@ -7,6 +7,7 @@
     <a href="https://github.com/BobdaProgrammer/doWM/pulse" target="_blank"><img src="https://img.shields.io/github/last-commit/BobdaProgrammer/doWM?style=for-the-badge&logo=github&color=7dc4e4&logoColor=D9E0EE&labelColor=302D41"></a>
     <a href="https://github.com/BobdaProgrammer/doWM/stargazers" target="_blank"><img src="https://img.shields.io/github/stars/BobdaProgrammer/doWM?style=for-the-badge&logo=apachespark&color=eed49f&logoColor=D9E0EE&labelColor=302D41"></a>
 </p><p align="center">
+      <a href="https://visitorbadge.io/status?path=https%3A%2F%2Fgithub.com%2FBobdaProgrammer%2FdoWM"><img src="https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Fgithub.com%2FBobdaProgrammer%2FdoWM&label=visitors&labelColor=%23ff8a65&countColor=%23111133" /></a>
       <a href="https://github.com/BobdaProgrammer/doWM/issues" target="_blank">
       <img alt="Issues" src="https://img.shields.io/github/issues/BobdaProgrammer/doWM?style=for-the-badge&logo=bilibili&color=F5E0DC&logoColor=D9E0EE&labelColor=302D41" />
     </a>  
