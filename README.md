@@ -1,4 +1,4 @@
-<div align="center">
+se<div align="center">
       <h1>doWM</h1>
      </div>
 <p align="center"> <a href="https://github.com/BobdaProgrammer/doWM" target="_blank"><img alt="" src="https://img.shields.io/badge/Github-302D41?style=for-the-badge&logo=github" style="vertical-align:center" /></a>
@@ -38,8 +38,6 @@ Currently the best way is to build from source
 </div>  
 
 -------------
-> [!WARNING]
-> if you want to use picom make sure to use xrender, I found glx doesn't work
 
 ## progress
 - [x] move/resize
