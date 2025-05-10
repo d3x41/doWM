@@ -5,15 +5,15 @@ gaps: 10
 # Mod1 = alt
 # Mod4 = windows/super key
 # those are the usual although all 1-5 are supported
-mod_key: "Mod1"
+mod-key: "Mod1"
 
-border-width: 3
+border-width: 5
 
 # border color for unfocused windows
-unactive-border-color: 0x8bd5ca
+unactive-border-color: 0xBBFFDC
 
 # border color for focused windows
-active-border-color: 0xa6da95
+active-border-color: 0xEEFFBB
 
 # keybindings
 # follow this pattern
@@ -25,12 +25,25 @@ active-border-color: 0xa6da95
 # - force-quit
 # - toggle-tiling
 # - toggle-fullscreen
-# 
-# note: if you want to execute a file like ~/script.sh, then use sh -c ~/script.sh
+# - swap-window-left
+# - swap-window-right
+# - reload-config
 keybinds:
   - key: "w"
     shift: false
-    exec: "rofi -show drun"
+    exec: "launcher_t7"
+  - key: "m"
+    shift: true
+    exec: "sh -c ~/.config/rofi/applets/bin/mpd.sh"
+  - key: "m"
+    shift: false
+    exec: "eww open --toggle player"
+  - key: "t"
+    shift: false
+    exec: "kitty"
+  - key: "e"
+    shift: false
+    exec: "thunar"
   - key: "f1"
     shift: false
     exec: "pactl set-sink-mute @DEFAULT_SINK@ toggle"
@@ -52,3 +65,12 @@ keybinds:
   - key: "v"
     shift: false
     role: "toggle-tiling"
+  - key: "left"
+    shift: false
+    role: "swap-window-left"
+  - key: "right"
+    shift: false
+    role: "swap-window-right"
+  - key: "r"
+    shift: true
+    role: "reload-config"

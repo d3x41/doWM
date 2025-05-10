@@ -32,7 +32,7 @@ type Config struct{
     Gap uint32 `koanf:"gaps"`
     BorderUnactive uint32 `koanf:"unactive-border-color"`
     BorderActive uint32 `koanf:"active-border-color"`
-    ModKey string `koanf:"ModKey"`
+    ModKey string `koanf:"mod-key"`
     BorderWidth uint32 `koanf:"border-width"`
     Keybinds []Keybind `koanf:"keybinds"`
 }
@@ -75,8 +75,8 @@ type Space struct{
 type Workspace struct{
     clients map[xproto.Window]xproto.Window
     frametoclient map[xproto.Window]xproto.Window
-    windows map[xproto.Window]*Window
     tiling bool
+    windowList []*Window
 }
 
 // the connection, root window, width and height of screen, workspaces, the current workspace index, the current workspace, atoms for EMWH, if the wm is tiling, the space for tiling windows to be, the different tiling layouts, the wm condig, the mod key
@@ -93,7 +93,9 @@ type WindowManager struct{
     layouts []Layout
     config Config
     mod uint16
+    windows map[xproto.Window]*Window
 }
+
 
 func (wm *WindowManager) cursor(){
 	// Load the default cursor ("left_ptr") from the theme
@@ -276,7 +278,7 @@ func Create() (*WindowManager, error){
         workspaces[i] = Workspace{ 
             clients: map[xproto.Window]xproto.Window{},
             frametoclient: map[xproto.Window]xproto.Window{},
-            windows: map[xproto.Window]*Window{},
+            windowList: []*Window{},
             tiling: false,
         }
     }
@@ -293,6 +295,7 @@ func Create() (*WindowManager, error){
         atoms: map[string]xproto.Atom{},
         tiling: false,
         layouts: createLayouts(),
+        windows: map[xproto.Window]*Window{},
     }, nil
 }
 
@@ -324,6 +327,105 @@ func (wm *WindowManager) createKeybind(kb *Keybind) Keybind{
     }
 
     return *kb
+}
+
+func (wm *WindowManager) reload(focused xproto.ButtonPressEvent){
+    // set the mod key for the wm
+    var mMask uint16
+    switch(wm.config.ModKey){
+        case "Mod1":
+            mMask=xproto.ModMask1
+        case "Mod2":
+            mMask=xproto.ModMask2
+        case "Mod3":
+            mMask=xproto.ModMask3
+        case "Mod4":
+            mMask=xproto.ModMask4
+        case "Mod5":
+            mMask=xproto.ModMask5 
+    }
+
+    wm.mod = mMask
+    
+    // manage keybinds for keybinds in the config
+    for i, kb := range wm.config.Keybinds{
+        wm.config.Keybinds[i] = wm.createKeybind(&kb)
+    }
+
+
+    // workspace keybinds, ik not very idiomatic but its fine :)
+    wm.config.Keybinds = append(wm.config.Keybinds, []Keybind{
+    wm.createKeybind(&Keybind{ Key: "0", Shift: false , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "1", Shift: false , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "2", Shift: false , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "3", Shift: false , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "4", Shift: false , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "5", Shift: false , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "6", Shift: false , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "7", Shift: false , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "8", Shift: false , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "9", Shift: false , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "0", Shift: true , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "1", Shift: true , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "2", Shift: true , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "3", Shift: true , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "4", Shift: true , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "5", Shift: true , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "6", Shift: true , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "7", Shift: true , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "8", Shift: true , Keycode: 0}),
+    wm.createKeybind(&Keybind{ Key: "9", Shift: true , Keycode: 0}),
+    }...)
+
+    windowsParent, err := xproto.QueryTree(wm.conn, wm.root).Reply()
+    if err != nil{
+        return
+    }
+    windows := windowsParent.Children
+    fmt.Println("windows:", windows)
+    fmt.Println("new border width:", wm.config.BorderWidth)
+
+    for _, window := range windows {
+        if win, ok := wm.windows[window]; ok && !win.Fullscreen {
+            col := wm.config.BorderUnactive
+            if window == focused.Child {
+                col = wm.config.BorderActive
+            }
+
+            // Set border width
+            err := xproto.ConfigureWindowChecked(wm.conn, window, xproto.ConfigWindowBorderWidth, []uint32{wm.config.BorderWidth}).Check()
+            if err != nil {
+                slog.Error("couldn't set border width", "error", err)
+            }
+
+            // Set border color
+            err = xproto.ChangeWindowAttributesChecked(wm.conn, window, xproto.CwBorderPixel, []uint32{col}).Check()
+            if err != nil {
+                slog.Error("couldn't set border color", "error", err)
+            }
+        }
+    }
+
+
+    wm.fitToLayout()
+}
+
+
+func (wm *WindowManager) pointerToWindow(window xproto.Window) error {
+    geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(window)).Reply()
+    if err != nil {
+        return err
+    }
+
+    trans, err := xproto.TranslateCoordinates(wm.conn, window, xproto.Setup(wm.conn).DefaultScreen(wm.conn).Root, 0, 0).Reply()
+    if err != nil {
+        return err
+    }
+
+    x := int16(trans.DstX) + int16(geom.Width)/2
+    y := int16(trans.DstY) + int16(geom.Height)/2
+
+    return xproto.WarpPointerChecked(wm.conn, 0, xproto.Setup(wm.conn).DefaultScreen(wm.conn).Root, 0, 0, 0, 0, x, y).Check()
 }
 
 func (wm *WindowManager) Run(){
@@ -528,7 +630,7 @@ func (wm *WindowManager) Run(){
                 ev := event.(xproto.MotionNotifyEvent)
                 // if we have the mouse down and we are holding the mod key, and if we are not tiling and the window is not full screen then do some simple maths to move and resize
                 if start.Child != 0&&ev.State&mMask!=0{
-                    if wm.tiling || (wm.currWorkspace.windows[start.Child]!=nil&&wm.currWorkspace.windows[start.Child].Fullscreen){
+                    if wm.tiling || (wm.windows[start.Child]!=nil&&wm.windows[start.Child].Fullscreen){
                         break
                     }
                     xdiff := ev.RootX - start.RootX
@@ -601,8 +703,9 @@ func (wm *WindowManager) Run(){
                 // if the destroy notify has come through but we haven't registered any kind of deletion then handle it
                 if _, ok := wm.currWorkspace.clients[ev.Window]; ok{
                     wm.UnFrame(wm.currWorkspace.clients[ev.Window], true)
+                    delete(wm.windows, wm.currWorkspace.clients[ev.Window])
                     delete(wm.currWorkspace.frametoclient, wm.currWorkspace.clients[ev.Window])
-                    delete(wm.currWorkspace.windows, wm.currWorkspace.clients[ev.Window])
+                    remove(&wm.currWorkspace.windowList, wm.currWorkspace.clients[ev.Window])
                     delete(wm.currWorkspace.clients, ev.Window)
                     fmt.Println("removed window from records")
                     fmt.Println("fitting to layout...")
@@ -611,8 +714,9 @@ func (wm *WindowManager) Run(){
                 if _, ok := wm.currWorkspace.frametoclient[ev.Window]; ok{
                     wm.UnFrame(wm.currWorkspace.frametoclient[ev.Window], true)
                     delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[ev.Window])
+                    delete(wm.windows, ev.Window)
+                    remove(&wm.currWorkspace.windowList, ev.Window)
                     delete(wm.currWorkspace.frametoclient, ev.Window)
-                    delete(wm.currWorkspace.windows, ev.Window)
                     wm.fitToLayout()
                 }
                 fmt.Println("finished destroying")
@@ -665,6 +769,51 @@ func (wm *WindowManager) Run(){
                                     break
                                 case "toggle-fullscreen":
                                     wm.toggleFullScreen(ev.Child)
+                                case "swap-window-left":
+                                    fmt.Println("swap left")
+                                    if wm.tiling{
+                                        currWindow := ev.Child
+                                        swapLeft:
+                                        for i := range wm.currWorkspace.windowList{
+                                            if currWindow == wm.currWorkspace.windowList[i].id{
+                                                if i == 0{
+                                                    swapWindows(&wm.currWorkspace.windowList, i, len(wm.currWorkspace.windowList)-1)
+                                                }else{
+                                                    swapWindows(&wm.currWorkspace.windowList, i, i-1)
+                                                }
+                                                wm.fitToLayout()
+                                                err := wm.pointerToWindow(currWindow)
+                                                if err != nil{
+                                                    slog.Error("couldn't move pointer to window", "error:", err)
+                                                }
+                                                break swapLeft
+                                            }
+                                        }
+                                    }
+                                case "swap-window-right":
+                                    fmt.Println("swap right")
+                                    if wm.tiling{
+                                        currWindow := ev.Child
+                                        swapRight:
+                                        for i := range wm.currWorkspace.windowList{
+                                            if currWindow == wm.currWorkspace.windowList[i].id{
+                                                if i == len(wm.currWorkspace.windowList)-1{
+                                                    swapWindows(&wm.currWorkspace.windowList, i, 0)
+                                                }else{
+                                                    swapWindows(&wm.currWorkspace.windowList, i, i+1)
+                                                }
+                                                wm.fitToLayout()
+                                                wm.pointerToWindow(currWindow)
+                                                break swapRight
+                                            }
+                                        }
+                                    }
+                                    case "reload-config":
+                                    f = file.Provider(filepath.Join(home, ".config", "doWM", "doWM.yml"))
+                                    cfg:=createConfig(f)
+                                    wm.config = cfg
+                                    wm.reload(start)
+                                    mMask = wm.mod
                             }
                             switch(kb.Key){
                                 case "0", "1", "2", "3", "4", "5", "6", "7", "8", "9":
@@ -674,7 +823,7 @@ func (wm *WindowManager) Run(){
                                     var window Window
                                     if kb.Shift{
                                         client = wm.currWorkspace.frametoclient[w]
-                                        window = *wm.currWorkspace.windows[w]
+                                        window = *wm.windows[w]
                                         fmt.Println("moving window")
                                         xproto.ConfigureWindow(
                                             wm.conn,
@@ -683,7 +832,7 @@ func (wm *WindowManager) Run(){
                                             []uint32{xproto.StackModeAbove},
                                         )
                                         delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
-                                        delete(wm.currWorkspace.windows, w)
+                                        remove(&wm.currWorkspace.windowList, w)
                                         delete(wm.currWorkspace.frametoclient, w)
                                     }                        
                                     switch kb.Key{
@@ -710,7 +859,7 @@ func (wm *WindowManager) Run(){
                                     }
                                     if kb.Shift{
                                         wm.currWorkspace.frametoclient[w]=client
-                                        wm.currWorkspace.windows[w]=&window
+                                        wm.currWorkspace.windowList=append(wm.currWorkspace.windowList, &window)
                                         wm.currWorkspace.clients[client]=w 
                                     }
                                     wm.fitToLayout()
@@ -734,6 +883,33 @@ func (wm *WindowManager) Run(){
         }
     }
 }
+func focusWindow(conn *xgb.Conn, win xproto.Window) {
+    err := xproto.SetInputFocusChecked(
+        conn,
+        xproto.InputFocusPointerRoot, // or InputFocusNone / InputFocusParent
+        win,
+        xproto.TimeCurrentTime,
+    ).Check()
+    if err != nil {
+        fmt.Println("Error focusing window:", err)
+    }
+}
+func swapWindows(arr *[]*Window, first int, last int){
+    (*arr)[first], (*arr)[last] = (*arr)[last], (*arr)[first]
+}
+
+func remove(arr *[]*Window, id xproto.Window){
+    if len(*arr)==1{
+        *arr = []*Window{}
+    }
+    for index := range *arr{
+        if (*arr)[index].id==id{
+            *arr = append((*arr)[:index], (*arr)[index+1:]...)
+            return
+        }
+    }
+}
+
 func runCommand(cmdStr string) {
 	parser := shellwords.NewParser()
 	args, err := parser.Parse(cmdStr)
@@ -831,9 +1007,12 @@ func (wm *WindowManager) fitToLayout(){
         return
     }
     layout := wm.layouts[windowNum-1]
-    i:=0
+    fmt.Println("fit to layout")
+    fmt.Println(wm.currWorkspace.windowList)
+    //fmt.Println(wm.currWorkspace.windows)
+    //fmt.Println(len(wm.currWorkspace.windows))
     // for each window put it in its place and size specified by that layout
-    for window, WindowData := range wm.currWorkspace.windows{
+    for i, WindowData := range wm.currWorkspace.windowList{
         if WindowData.Fullscreen{
             continue
         }
@@ -843,9 +1022,8 @@ func (wm *WindowManager) fitToLayout(){
         Y := wm.tilingspace.Y+int((float64(wm.tilingspace.Height)*layoutWindow.YPercentage))+int(wm.config.Gap)
         Width := (float64(wm.tilingspace.Width)*layoutWindow.WidthPercentage)-float64(wm.config.Gap*2)
         Height := (float64(wm.tilingspace.Height)*layoutWindow.HeightPercentage)-float64(wm.config.Gap*2)
-        fmt.Println("window:", window, "X:", X, "Y:", Y, "Width:", Width, "Height:", Height)
-        wm.configureWindow(window, X, Y, int(Width), int(Height))
-        i++
+        fmt.Println("window:", WindowData.id, "X:", X, "Y:", Y, "Width:", Width, "Height:", Height)
+        wm.configureWindow(WindowData.id, X, Y, int(Width), int(Height))
     }
 }
 
@@ -886,27 +1064,27 @@ func (wm *WindowManager) toggleTiling(){
 func (wm *WindowManager) disableTiling(){
         wm.currWorkspace.tiling = false
         fmt.Println("DISABLED TILING")
-        fmt.Println(len(wm.currWorkspace.windows))
         // restore windows to there previous state (before tiling)
-        for windowId, window := range wm.currWorkspace.windows{
+        for _, window := range wm.currWorkspace.windowList{
             if window.Fullscreen{
-                fmt.Println("from: disable tiling, toggling fullscreen on window", windowId)
-                wm.toggleFullScreen(windowId)
+                fmt.Println("from: disable tiling, toggling fullscreen on window", window.id)
+                wm.toggleFullScreen(window.id)
             }
-            wm.configureWindow(windowId, window.X, window.Y, window.Width, window.Height)
+            wm.configureWindow(window.id, window.X, window.Y, window.Width, window.Height)
         }
 }
 
 func (wm *WindowManager) enableTiling(){
         wm.currWorkspace.tiling = true
         // make sure no windows are fullscreened and that there state is saved (so it can be restored later if/when the user disables tiling)
-        for windowId, window := range wm.currWorkspace.windows{
+        for i, window := range wm.currWorkspace.windowList{
             if window.Fullscreen{
-                fmt.Println("from: enable tiling, toggling fullscreen on window", windowId)
-                wm.toggleFullScreen(windowId)
+                fmt.Println("from: enable tiling, toggling fullscreen on window", window.id)
+                wm.toggleFullScreen(window.id)
             }
-            attr, _ := xproto.GetGeometry(wm.conn, xproto.Drawable(windowId)).Reply()
-            wm.currWorkspace.windows[windowId] = &Window{
+            fmt.Println(window.id)
+            attr, _ := xproto.GetGeometry(wm.conn, xproto.Drawable(window.id)).Reply()
+            wm.currWorkspace.windowList[i] = &Window{
                 id: window.id,
                 X:int(attr.X),
                 Y:int(attr.Y),
@@ -922,7 +1100,7 @@ func (wm *WindowManager) enableTiling(){
 }
 
 func (wm *WindowManager) toggleFullScreen(Child xproto.Window){
-    win := wm.currWorkspace.windows[Child]
+    win := wm.windows[Child]
     if win != nil{
         if win.Fullscreen{
             win.Fullscreen = false
@@ -950,7 +1128,7 @@ func (wm *WindowManager) toggleFullScreen(Child xproto.Window){
             win.Fullscreen = true
             xproto.ConfigureWindow(wm.conn, Child, xproto.ConfigWindowStackMode, []uint32{xproto.StackModeAbove})
             attr, _ := xproto.GetGeometry(wm.conn, xproto.Drawable(Child)).Reply()
-            win := wm.currWorkspace.windows[Child]
+            win := wm.windows[Child]
             win.X = int(attr.X)
             win.Y = int(attr.Y)
             win.Width = int(attr.Width)
@@ -1187,8 +1365,9 @@ func (wm *WindowManager) OnUnmapNotify(event xproto.UnmapNotifyEvent){
             wm.currWorkspace = &wm.workspaces[index]
             client := wm.currWorkspace.frametoclient[frame]
             delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[frame])
+            remove(&wm.currWorkspace.windowList, frame)
+            delete(wm.windows, frame)
             delete(wm.currWorkspace.frametoclient, frame)
-            delete(wm.currWorkspace.windows, frame)
             wm.workspaces[wm.workspaceIndex].frametoclient[frame]=client
             wm.workspaces[wm.workspaceIndex].clients[client]=frame 
             fmt.Println("frame")
@@ -1263,7 +1442,8 @@ func (wm *WindowManager) UnFrame(w xproto.Window, unmapped bool){
 
     // remove window and frame from current workspace record
     delete(wm.currWorkspace.clients, w)
-    delete(wm.currWorkspace.windows, frame)
+    remove(&wm.currWorkspace.windowList, frame)
+    delete(wm.windows, frame)
     delete(wm.currWorkspace.frametoclient, frame)
     slog.Info("Unmapped", "frame", frame, "window", w)
 }
@@ -1487,13 +1667,15 @@ func (wm *WindowManager) Frame(w xproto.Window, createdBeforeWM bool){
     // add all of this to the current workspace record
     wm.currWorkspace.clients[w] = frameId
     wm.currWorkspace.frametoclient[frameId] = w
-    wm.currWorkspace.windows[frameId] = &Window{
+    wm.currWorkspace.windowList = append(wm.currWorkspace.windowList, &Window{
         X: int(topLeftX),
         Y: int(topLeftY),
         Width: int(geometry.Width),
         Height: int(geometry.Height),
         Fullscreen: false,
-    }
+        id: frameId,
+    })
+    wm.windows[frameId]=wm.currWorkspace.windowList[len(wm.currWorkspace.windowList)-1]
     fmt.Println("Framed window"+strconv.Itoa(int(w))+"["+strconv.Itoa(int(frameId))+"]")
 }
 
