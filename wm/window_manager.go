@@ -63,7 +63,6 @@ type Window struct{
     X,Y int
     Width, Height int
     Fullscreen bool
-    Focused bool
 }
 
 // an area on the screen
@@ -95,7 +94,6 @@ type WindowManager struct{
     config Config
     mod uint16
     windows map[xproto.Window]*Window
-    focus xproto.Window
 }
 
 
@@ -607,26 +605,7 @@ func (wm *WindowManager) Run(){
             continue
         }
         if len(wm.currWorkspace.frametoclient)==0{
-            xproto.SetInputFocusChecked(wm.conn, xproto.InputFocusPointerRoot, wm.root, xproto.TimeCurrentTime).Check()          
-        }
-        focus, _ := xproto.GetInputFocus(wm.conn).Reply()
-        if _, ok := wm.currWorkspace.clients[focus.Focus]; ok && !wm.windows[wm.currWorkspace.clients[focus.Focus]].Focused{
-            wm.focusBorder(wm.currWorkspace.clients[focus.Focus])
-            wm.windows[wm.currWorkspace.clients[focus.Focus]].Focused = true
-            for _, window := range wm.currWorkspace.clients{
-                if wm.windows[window].Focused&&window!=wm.currWorkspace.clients[focus.Focus]{
-                    wm.windows[window].Focused=false
-                    wm.unFocusBorder(window)
-                }
-            }
-            wm.focus = wm.currWorkspace.clients[focus.Focus]
-        }else if _, ok := wm.currWorkspace.clients[focus.Focus]; !ok{ 
-            for _, window := range wm.currWorkspace.clients{
-                if wm.windows[window].Focused{
-                    wm.windows[window].Focused=false
-                    wm.unFocusBorder(window)
-                }
-            }
+            xproto.SetInputFocusChecked(wm.conn, xproto.InputFocusPointerRoot, wm.root, xproto.TimeCurrentTime).Check()
         }
         switch event.(type){
             case xproto.ButtonPressEvent:
@@ -650,8 +629,6 @@ func (wm *WindowManager) Run(){
             case xproto.MotionNotifyEvent:
                 ev := event.(xproto.MotionNotifyEvent)
                 // if we have the mouse down and we are holding the mod key, and if we are not tiling and the window is not full screen then do some simple maths to move and resize
-
-                _=xproto.SetInputFocusChecked(wm.conn, xproto.InputFocusPointerRoot, ev.Child, xproto.TimeCurrentTime).Check()
                 if start.Child != 0&&ev.State&mMask!=0{
                     if wm.tiling || (wm.windows[start.Child]!=nil&&wm.windows[start.Child].Fullscreen){
                         break
@@ -745,8 +722,18 @@ func (wm *WindowManager) Run(){
                 fmt.Println("finished destroying")
                 break
             case xproto.EnterNotifyEvent:
+                // when we enter the frame, change the border color
+                fmt.Println("EnterNotify")
+                ev:=event.(xproto.EnterNotifyEvent)
+                fmt.Println(ev.Event)
+                wm.OnEnterNotify(event.(xproto.EnterNotifyEvent))
                 break
             case xproto.LeaveNotifyEvent:
+                // when we leave the frame, change the border color
+                fmt.Println("LeaveNotify")
+                ev:=event.(xproto.LeaveNotifyEvent)
+                fmt.Println(ev.Event)
+                wm.OnLeaveNotify(event.(xproto.LeaveNotifyEvent))
                 break
             case xproto.KeyPressEvent:
                 fmt.Println("keyPress")
@@ -1104,7 +1091,6 @@ func (wm *WindowManager) enableTiling(){
                 Width: int(attr.Width),
                 Height: int(attr.Height),
                 Fullscreen: false,
-                Focused: window.Focused,
             }
         }
         fmt.Println("tiling")
@@ -1312,13 +1298,13 @@ func (wm *WindowManager) SendWmDelete(conn *xgb.Conn, window xproto.Window) erro
     ).Check()
 }
 
-func (wm *WindowManager) unFocusBorder(window xproto.Window){
+func (wm *WindowManager) OnLeaveNotify(event xproto.LeaveNotifyEvent){
     // change border color when you leave a window
     Col := wm.config.BorderUnactive
 
     err := xproto.ChangeWindowAttributesChecked(
         wm.conn,
-        window,
+        wm.currWorkspace.clients[event.Event],
         xproto.CwBackPixel|xproto.CwBorderPixel,
         []uint32{
             Col, // background
@@ -1328,15 +1314,32 @@ func (wm *WindowManager) unFocusBorder(window xproto.Window){
     if err!=nil{
         slog.Error("couldn't remove focus from window", "error:", err)
     }
-    wm.windows[window].Focused=false
 }
-func (wm *WindowManager) focusBorder(window xproto.Window){
+
+func (wm *WindowManager) setNetActiveWindow(win xproto.Window) {
+    atomActiveWin, _ := xproto.InternAtom(wm.conn, true, uint16(len("_NET_ACTIVE_WINDOW")), "_NET_ACTIVE_WINDOW").Reply()
+
+    ev := xproto.ClientMessageEvent{
+        Format: 32,
+        Window: win,
+        Type:   atomActiveWin.Atom,
+        Data: xproto.ClientMessageDataUnionData32New([]uint32{
+            1,                      // Source indication (1 = application)
+            xproto.TimeCurrentTime, // Timestamp
+            0, 0, 0,                // Unused
+        }),
+    }
+
+    mask := xproto.EventMaskSubstructureRedirect | xproto.EventMaskSubstructureNotify
+    xproto.SendEvent(wm.conn, false, wm.root, uint32(mask), string(ev.Bytes()))
+}
+func (wm *WindowManager) OnEnterNotify(event xproto.EnterNotifyEvent){
     // set focus when we enter a window and change border color
-    err:=xproto.SetInputFocusChecked(wm.conn, xproto.InputFocusPointerRoot, window, xproto.TimeCurrentTime).Check()
+    err:=xproto.SetInputFocusChecked(wm.conn, xproto.InputFocusPointerRoot, event.Event, xproto.TimeCurrentTime).Check()
     Col := wm.config.BorderActive
     err = xproto.ChangeWindowAttributesChecked(
         wm.conn,
-        window,
+        wm.currWorkspace.clients[event.Event],
         xproto.CwBackPixel|xproto.CwBorderPixel,
         []uint32{
             Col, // background
@@ -1346,6 +1349,7 @@ func (wm *WindowManager) focusBorder(window xproto.Window){
     if err!=nil{
         slog.Error("couldn't set focus on window", "error:", err)
     }
+    wm.setNetActiveWindow(event.Event)
 }
 
 func (wm *WindowManager) findWindow(window xproto.Window) (bool,int, xproto.Window){
@@ -1633,7 +1637,7 @@ func (wm *WindowManager) Frame(w xproto.Window, createdBeforeWM bool){
             Col, // background
             Col, // border color
             xproto.EventMaskSubstructureRedirect |
-            xproto.EventMaskSubstructureNotify | xproto.EventMaskEnterWindow | xproto.EventMaskLeaveWindow | xproto.EventMaskKeyPress | xproto.EventMaskButtonPress | xproto.EventMaskKeyRelease | xproto.EventMaskButtonRelease | xproto.EventMaskPointerMotion,
+            xproto.EventMaskSubstructureNotify  | xproto.EventMaskKeyPress | xproto.EventMaskButtonPress | xproto.EventMaskKeyRelease | xproto.EventMaskButtonRelease | xproto.EventMaskPointerMotion,
         },
     ).Check()
 
@@ -1667,6 +1671,12 @@ func (wm *WindowManager) Frame(w xproto.Window, createdBeforeWM bool){
         return
     }
 
+    err = xproto.ChangeWindowAttributesChecked(wm.conn, w, xproto.CwEventMask, []uint32{
+        xproto.EventMaskEnterWindow | xproto.EventMaskLeaveWindow,
+    }).Check()
+    if err != nil {
+        slog.Error("failed to set event mask on window", "error:", err)
+    }
     // map the frame
     err = xproto.MapWindowChecked(
         wm.conn,
@@ -1688,7 +1698,6 @@ func (wm *WindowManager) Frame(w xproto.Window, createdBeforeWM bool){
         Height: int(geometry.Height),
         Fullscreen: false,
         id: frameId,
-        Focused: false,
     })
     wm.windows[frameId]=wm.currWorkspace.windowList[len(wm.currWorkspace.windowList)-1]
     fmt.Println("Framed window"+strconv.Itoa(int(w))+"["+strconv.Itoa(int(frameId))+"]")
