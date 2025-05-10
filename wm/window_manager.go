@@ -11,7 +11,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strconv"
-
+    "bytes"
 	"github.com/BurntSushi/xgb"
 	"github.com/BurntSushi/xgb/xproto"
 	"github.com/BurntSushi/xgbutil"
@@ -1316,23 +1316,44 @@ func (wm *WindowManager) OnLeaveNotify(event xproto.LeaveNotifyEvent){
     }
 }
 
+func setFrameWindowType(conn *xgb.Conn, win xproto.Window) {
+    atomWindowType, _ := xproto.InternAtom(conn, true, uint16(len("_NET_WM_WINDOW_TYPE")), "_NET_WM_WINDOW_TYPE").Reply()
+    atomNormal, _ := xproto.InternAtom(conn, true, uint16(len("_NET_WM_WINDOW_TYPE_NORMAL")), "_NET_WM_WINDOW_TYPE_NORMAL").Reply()
+
+    xproto.ChangeProperty(conn,
+        xproto.PropModeReplace,
+        win,
+        atomWindowType.Atom,
+        xproto.AtomAtom,
+        32,
+        1,
+        []byte{
+            byte(atomNormal.Atom),
+            byte(atomNormal.Atom >> 8),
+            byte(atomNormal.Atom >> 16),
+            byte(atomNormal.Atom >> 24),
+        },
+    )
+}
+
 func (wm *WindowManager) setNetActiveWindow(win xproto.Window) {
     atomActiveWin, _ := xproto.InternAtom(wm.conn, true, uint16(len("_NET_ACTIVE_WINDOW")), "_NET_ACTIVE_WINDOW").Reply()
 
-    ev := xproto.ClientMessageEvent{
-        Format: 32,
-        Window: win,
-        Type:   atomActiveWin.Atom,
-        Data: xproto.ClientMessageDataUnionData32New([]uint32{
-            1,                      // Source indication (1 = application)
-            xproto.TimeCurrentTime, // Timestamp
-            0, 0, 0,                // Unused
-        }),
-    }
+    // Convert uint32 to []byte
+    buf := new(bytes.Buffer)
+    binary.Write(buf, binary.LittleEndian, win)
 
-    mask := xproto.EventMaskSubstructureRedirect | xproto.EventMaskSubstructureNotify
-    xproto.SendEvent(wm.conn, false, wm.root, uint32(mask), string(ev.Bytes()))
+    xproto.ChangeProperty(wm.conn,
+        xproto.PropModeReplace,
+        wm.root,                 // Set on the root window
+        atomActiveWin.Atom,     // _NET_ACTIVE_WINDOW
+        xproto.AtomWindow,      // Type: WINDOW
+        32,                     // Format: 32-bit
+        1,                      // Only one window
+        buf.Bytes(),            // Here's the []byte version
+    )
 }
+
 func (wm *WindowManager) OnEnterNotify(event xproto.EnterNotifyEvent){
     // set focus when we enter a window and change border color
     err:=xproto.SetInputFocusChecked(wm.conn, xproto.InputFocusPointerRoot, event.Event, xproto.TimeCurrentTime).Check()
@@ -1349,7 +1370,7 @@ func (wm *WindowManager) OnEnterNotify(event xproto.EnterNotifyEvent){
     if err!=nil{
         slog.Error("couldn't set focus on window", "error:", err)
     }
-    wm.setNetActiveWindow(event.Event)
+    wm.setNetActiveWindow(wm.currWorkspace.clients[event.Event])
 }
 
 func (wm *WindowManager) findWindow(window xproto.Window) (bool,int, xproto.Window){
@@ -1677,6 +1698,9 @@ func (wm *WindowManager) Frame(w xproto.Window, createdBeforeWM bool){
     if err != nil {
         slog.Error("failed to set event mask on window", "error:", err)
     }
+
+    setFrameWindowType(wm.conn, frameId)
+
     // map the frame
     err = xproto.MapWindowChecked(
         wm.conn,
