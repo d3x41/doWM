@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=doWM
+Comment=Floating and Tiling window manager for x11
+Exec=/usr/local/bin/doWM
+TryExec=/usr/local/bin/doWM
+Type=Application

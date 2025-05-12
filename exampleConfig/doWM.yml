@@ -31,13 +31,7 @@ active-border-color: 0xEEFFBB
 keybinds:
   - key: "w"
     shift: false
-    exec: "launcher_t7"
-  - key: "m"
-    shift: true
-    exec: "sh -c ~/.config/rofi/applets/bin/mpd.sh"
-  - key: "m"
-    shift: false
-    exec: "eww open --toggle player"
+    exec: "rofi -show drun"
   - key: "t"
     shift: false
     exec: "kitty"

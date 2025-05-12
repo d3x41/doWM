@@ -596,7 +596,7 @@ func (wm *WindowManager) Run(){
     }
     for{
         // get next event
-        event, err := wm.conn.PollForEvent()
+        event, err := wm.conn.WaitForEvent()
         if err!=nil{
             slog.Error("event error","error:" , err.Error())
             continue
