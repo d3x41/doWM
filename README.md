@@ -59,83 +59,25 @@ then there are keybinds, each keybind either executes a command or plays a role 
 - toggle-fullscreen (toggle fullscreen on window)
 - swap-window-left (shift window left in tiling mode)
 - swap-window-right (shift window right in tiling mode)
+- focus-window-left (focus the window to the left in tiling mode)
+- focus-window-right (focus the window to the right in tiling mode)
 - reload-config (reload doWM.yml)
 
 each keybind also has a key and a shift option, key is the character of the key (can also be things like "F1") and shift is a bool for if shift should be pressed or not to register.
 
-Below is the example config:
+for example: 
 ```yml
-# gaps for tiling windows
-gaps: 10
-
-# the mod key used for all window manager actions
-# Mod1 = alt
-# Mod4 = windows/super key
-# those are the usual although all 1-5 are supported
-mod-key: "Mod1"
-
-border-width: 5
-
-# border color for unfocused windows
-unactive-border-color: 0xBBFFDC
-
-# border color for focused windows
-active-border-color: 0xEEFFBB
-
-# keybindings
-# follow this pattern
-# a key (can't be multiple) in lowercase
-# wether the kebybind is with shift
-# either a command to exec or a role in the window manager
-# roles are:
-# - quit
-# - force-quit
-# - toggle-tiling
-# - toggle-fullscreen
-# - swap-window-left
-# - swap-window-right
-# - reload-config
-keybinds:
-  - key: "w"
-    shift: false
-    exec: "rofi -show drun"
+  # When mod + t is pressed then open kitty
   - key: "t"
     shift: false
     exec: "kitty"
-  - key: "e"
-    shift: false
-    exec: "thunar"
-  - key: "f1"
-    shift: false
-    exec: "pactl set-sink-mute @DEFAULT_SINK@ toggle"
-  - key: "f2"
-    shift: false
-    exec: "pactl set-sink-volume @DEFAULT_SINK@ -5%"
-  - key: "f3"
-    shift: false
-    exec: "pactl set-sink-volume @DEFAULT_SINK@ +5%"
-  - key: "c"
-    shift: false
-    role: "quit"
-  - key: "c"
+  # When mod + shift + right arrow is pressed then switch the focused window to the right
+  - key "right"
     shift: true
-    role: "force-quit"
-  - key: "f"
-    shift: false
-    role: "toggle-fullscreen"
-  - key: "v"
-    shift: false
-    role: "toggle-tiling"
-  - key: "left"
-    shift: false
-    role: "swap-window-left"
-  - key: "right"
-    shift: false
     role: "swap-window-right"
-  - key: "r"
-    shift: true
-    role: "reload-config"
 ```
+
+For an example config, look at [/exampleConfig](https://github.com/BobdaProgrammer/doWM/tree/main/exampleConfig)
 
 ## screenshots
 <div align="center">

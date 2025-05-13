@@ -807,13 +807,43 @@ func (wm *WindowManager) Run(){
                                                 break swapRight
                                             }
                                         }
-                                    }
-                                    case "reload-config":
-                                    f = file.Provider(filepath.Join(home, ".config", "doWM", "doWM.yml"))
-                                    cfg:=createConfig(f)
-                                    wm.config = cfg
-                                    wm.reload(start)
-                                    mMask = wm.mod
+				    }
+				case "focus-window-right":
+                                    if wm.tiling{
+                                        currWindow := ev.Child
+                                        focusRight:
+                                        for i := range wm.currWorkspace.windowList{
+                                            if currWindow == wm.currWorkspace.windowList[i].id{
+                                                if i == len(wm.currWorkspace.windowList)-1{
+                                                    wm.pointerToWindow(wm.currWorkspace.windowList[0].id)
+                                                }else{
+                                                    wm.pointerToWindow(wm.currWorkspace.windowList[i+1].id)
+                                                }
+                                                break focusRight
+                                            }
+                                        }
+				    }
+			    	case "focus-window-left":
+                                    if wm.tiling{
+                                        currWindow := ev.Child
+                                        focusLeft:
+                                        for i := range wm.currWorkspace.windowList{
+                                            if currWindow == wm.currWorkspace.windowList[i].id{
+                                                if i == 0{
+                                                    wm.pointerToWindow(wm.currWorkspace.windowList[len(wm.currWorkspace.windowList)-1].id)
+                                                }else{
+                                                    wm.pointerToWindow(wm.currWorkspace.windowList[i-1].id)
+                                                }
+                                                break focusLeft
+                                            }
+                                        }
+				    }
+				case "reload-config":
+					f = file.Provider(filepath.Join(home, ".config", "doWM", "doWM.yml"))
+					cfg:=createConfig(f)
+					wm.config = cfg
+					wm.reload(start)
+					mMask = wm.mod
                             }
                             switch(kb.Key){
                                 case "0", "1", "2", "3", "4", "5", "6", "7", "8", "9":

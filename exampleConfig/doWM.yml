@@ -27,6 +27,8 @@ active-border-color: 0xEEFFBB
 # - toggle-fullscreen
 # - swap-window-left
 # - swap-window-right
+# - focus-window-left
+# - focus-window-right
 # - reload-config
 keybinds:
   - key: "w"
@@ -60,11 +62,17 @@ keybinds:
     shift: false
     role: "toggle-tiling"
   - key: "left"
-    shift: false
+    shift: true
     role: "swap-window-left"
   - key: "right"
-    shift: false
+    shift: true
     role: "swap-window-right"
+  - key: "left"
+    shift: false
+    role: "focus-window-left"
+  - key: "right"
+    shift: false
+    role: "focus-window-right"
   - key: "r"
     shift: true
     role: "reload-config"
