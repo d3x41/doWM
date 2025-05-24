@@ -657,6 +657,7 @@ func (wm *WindowManager) Run(){
             case xproto.MotionNotifyEvent:
                 ev := event.(xproto.MotionNotifyEvent)
                 // if we have the mouse down and we are holding the mod key, and if we are not tiling and the window is not full screen then do some simple maths to move and resize
+				focusWindow(wm.conn, ev.Child)
                 if start.Child != 0&&ev.State&mMask!=0{
                     if wm.currWorkspace.tiling || (wm.windows[start.Child]!=nil&&wm.windows[start.Child].Fullscreen){
                         break
