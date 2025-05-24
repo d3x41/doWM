@@ -796,7 +796,16 @@ func (wm *WindowManager) Run(){
                                     wm.toggleTiling()
                                     break
 								case "detach-tiling":
-									if wm.currWorkspace.detachTiling{wm.currWorkspace.detachTiling=false}else{wm.currWorkspace.detachTiling=true}
+									if wm.currWorkspace.detachTiling{
+										wm.currWorkspace.detachTiling=false
+										if wm.tiling && !wm.currWorkspace.tiling{
+											wm.enableTiling()
+										}else if !wm.tiling && wm.currWorkspace.tiling{
+											wm.disableTiling()
+										}
+									}else{
+										wm.currWorkspace.detachTiling=true
+									}
 									wm.fitToLayout()
                                 case "toggle-fullscreen":
                                     wm.toggleFullScreen(ev.Child)
