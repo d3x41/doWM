@@ -29,7 +29,10 @@ var (
 var k = koanf.New(".")
 type Config struct{
     // tiling window gaps, unfocused/focused window border colors, mod key for all wm actions, window border width, keybinds
+	Layouts map[int][]Layout `koanf:"layouts"`
     Gap uint32 `koanf:"gaps"`
+	OuterGap uint32 `koanf:"outer-gap"`
+	StartTiling bool `koanf:"default-tiling"`
     BorderUnactive uint32 `koanf:"unactive-border-color"`
     BorderActive uint32 `koanf:"active-border-color"`
     ModKey string `koanf:"mod-key"`
@@ -49,12 +52,15 @@ type Keybind struct{
 
 // where a window is on a layout (dynamic by using percentages)
 type LayoutWindow struct{
-    WidthPercentage, HeightPercentage, XPercentage, YPercentage float64
+	WidthPercentage float64 `koanf:"width"`
+	HeightPercentage float64 `koanf:"height"`
+	XPercentage float64 `koanf:"x"`
+	YPercentage float64 `koanf:"y"`
 }
 
 // a tiling layout of windows
 type Layout struct{
-    Windows []LayoutWindow
+	Windows []LayoutWindow  `koanf:"windows"`
 }
 
 // basic window struct
@@ -76,6 +82,7 @@ type Workspace struct{
     clients map[xproto.Window]xproto.Window
     frametoclient map[xproto.Window]xproto.Window
     tiling bool
+	layoutIndex int
     windowList []*Window
 }
 
@@ -90,10 +97,10 @@ type WindowManager struct{
     atoms map[string]xproto.Atom
     tiling bool
     tilingspace Space
-    layouts []Layout
     config Config
     mod uint16
     windows map[xproto.Window]*Window
+	layoutIndex int
 }
 
 
@@ -135,86 +142,88 @@ func (wm *WindowManager) cursor(){
 }
 
 // creates simple tiling layouts for 1-4 windows, any more is simply left on top to be moved
-func createLayouts() ([]Layout){
-    return []Layout{
-        {
-            []LayoutWindow{ // one window layout
+
+func createLayouts() map[int][]Layout {
+    return map[int][]Layout{
+        1: {{
+            Windows: []LayoutWindow{
                 {
-                    XPercentage: 0, // left
-                    YPercentage: 0, // top
-                    WidthPercentage: 1, // full width
-                    HeightPercentage: 1, // full height
+                    XPercentage:      0,
+                    YPercentage:      0,
+                    WidthPercentage:  1,
+                    HeightPercentage: 1,
                 },
             },
-        }, 
-        {
-            []LayoutWindow{ // two window layout
+        }},
+        2: {{
+            Windows: []LayoutWindow{
                 {
-                    XPercentage: 0, // left
-                    YPercentage: 0, // top
-                    WidthPercentage: 0.5, // half width
-                    HeightPercentage: 1, // full height
+                    XPercentage:      0,
+                    YPercentage:      0,
+                    WidthPercentage:  0.5,
+                    HeightPercentage: 1,
                 },
                 {
-                    XPercentage: 0.5, // half from left
-                    YPercentage: 0, // top
-                    WidthPercentage: 0.5, // half width
-                    HeightPercentage: 1, // full height
-                },
-            },
-        },
-        {
-            []LayoutWindow{ // three window layout
-                {
-                    XPercentage: 0, //left
-                    YPercentage: 0, //top
-                    WidthPercentage: 1.0/3, // third of width
-                    HeightPercentage: 1, // full height
-                },
-                {
-                    XPercentage: 1.0/3, // third from left
-                    YPercentage: 0, // top
-                    WidthPercentage: 1.0/3, //third of width
-                    HeightPercentage: 1, // full height
-                },
-                {
-                    XPercentage: 2.0/3, // 2 thirds from left
-                    YPercentage: 0, // top
-                    WidthPercentage: 1.0/3, // third of width
-                    HeightPercentage: 1, // full height
+                    XPercentage:      0.5,
+                    YPercentage:      0,
+                    WidthPercentage:  0.5,
+                    HeightPercentage: 1,
                 },
             },
-        },
-        {
-            []LayoutWindow{ // 4 window layout
+        }},
+        3: {{
+            Windows: []LayoutWindow{
                 {
-                    XPercentage: 0, // left
-                    YPercentage: 0, // top
-                    WidthPercentage: 0.5, // half width
-                    HeightPercentage: 0.5, // half height
+                    XPercentage:      0.0,
+                    YPercentage:      0,
+                    WidthPercentage:  1.0 / 3,
+                    HeightPercentage: 1,
                 },
                 {
-                    XPercentage: 0.5, // half from left
-                    YPercentage: 0, // top
-                    WidthPercentage: 0.5, // half width
-                    HeightPercentage: 0.5, // half height
+                    XPercentage:      1.0 / 3,
+                    YPercentage:      0,
+                    WidthPercentage:  1.0 / 3,
+                    HeightPercentage: 1,
                 },
                 {
-                    XPercentage: 0, //left
-                    YPercentage: 0.5, // half from top
-                    WidthPercentage: 0.5, // half width
-                    HeightPercentage: 0.5, // half height
-                },
-                {
-                    XPercentage: 0.5, // half from left
-                    YPercentage: 0.5, // half from top
-                    WidthPercentage: 0.5, // half width
-                    HeightPercentage: 0.5,// half height
+                    XPercentage:      2.0 / 3,
+                    YPercentage:      0,
+                    WidthPercentage:  1.0 / 3,
+                    HeightPercentage: 1,
                 },
             },
-        },
+        }},
+        4: {{
+            Windows: []LayoutWindow{
+                {
+                    XPercentage:      0,
+                    YPercentage:      0,
+                    WidthPercentage:  0.5,
+                    HeightPercentage: 0.5,
+                },
+                {
+                    XPercentage:      0.5,
+                    YPercentage:      0,
+                    WidthPercentage:  0.5,
+                    HeightPercentage: 0.5,
+                },
+                {
+                    XPercentage:      0,
+                    YPercentage:      0.5,
+                    WidthPercentage:  0.5,
+                    HeightPercentage: 0.5,
+                },
+                {
+                    XPercentage:      0.5,
+                    YPercentage:      0.5,
+                    WidthPercentage:  0.5,
+                    HeightPercentage: 0.5,
+                },
+            },
+        }},
     }
 }
+
 
 
 
@@ -223,11 +232,14 @@ func createConfig(f koanf.Provider) Config{
     // Set defaults manually
     cfg := Config{
         Gap:            6,
+		OuterGap: 		0,
         BorderWidth:    3,
         ModKey:         "Mod1",
         BorderUnactive: 0x8bd5ca,
         BorderActive:   0xa6da95,
         Keybinds: []Keybind{},
+		Layouts: createLayouts(),
+		StartTiling: false,
     }
 
     // Load the config file
@@ -239,6 +251,8 @@ func createConfig(f koanf.Provider) Config{
         slog.Warn("couldn't load config, using defaults")
         exec.Command("notify-send", "'error in doWM config, using defaults'").Start()
     }
+
+	fmt.Println(cfg.Layouts)
 
     return cfg
 }
@@ -280,6 +294,7 @@ func Create() (*WindowManager, error){
             frametoclient: map[xproto.Window]xproto.Window{},
             windowList: []*Window{},
             tiling: false,
+			layoutIndex: 0,
         }
     }
 
@@ -294,8 +309,8 @@ func Create() (*WindowManager, error){
         workspaceIndex: 0,
         atoms: map[string]xproto.Atom{},
         tiling: false,
-        layouts: createLayouts(),
         windows: map[xproto.Window]*Window{},
+		layoutIndex: 0,
     }, nil
 }
 
@@ -460,13 +475,17 @@ func (wm *WindowManager) Run(){
         }
     }
 
-    wm.cursor()
+    //wm.cursor()
 
     // retrieve config and set values
     home, _ := os.UserHomeDir()
     f := file.Provider(filepath.Join(home, ".config", "doWM", "doWM.yml"))
     cfg:=createConfig(f)
     wm.config = cfg
+	if(wm.config.StartTiling){
+		wm.toggleTiling()
+		wm.fitToLayout()
+	}
     //TODO: make auto-reload
 
     // for things like polybar, to show workspaces
@@ -563,10 +582,12 @@ func (wm *WindowManager) Run(){
 
     fmt.Println(wm.config.Keybinds)
 
-    // for moving and resizing windows, it gets the left and right mouse button wilst holding the mod key
+
+// Only grab with Mod + left or right click (not plain Button1)
     err = xproto.GrabButtonChecked(wm.conn, true, wm.root, 	uint16(xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease | xproto.EventMaskPointerMotion), xproto.GrabModeAsync, xproto.GrabModeAsync, xproto.WindowNone, xproto.AtomNone, xproto.ButtonIndex1, mMask).Check()
 
     err = xproto.GrabButtonChecked(wm.conn, true, wm.root, 	uint16(xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease | xproto.EventMaskPointerMotion), xproto.GrabModeAsync, xproto.GrabModeAsync, xproto.WindowNone, xproto.AtomNone, xproto.ButtonIndex3, mMask).Check()
+
 
     if err!=nil{
         slog.Error("couldn't grab window+c key", "error:", err.Error())
@@ -587,6 +608,7 @@ func (wm *WindowManager) Run(){
         "_NET_WM_WINDOW_TYPE",
         "_NET_WM_WINDOW_TYPE_DOCK",
         "_NET_WM_STRUT_PARTIAL",
+		"_NET_CURRENT_DESKTOP",
     }
 
     for _, name := range atoms {
@@ -594,6 +616,8 @@ func (wm *WindowManager) Run(){
         fmt.Printf("%s = %d\n", name, a.Atom)
         wm.atoms[name] = a.Atom
     }
+	wm.declareSupportedAtoms()
+
     for{
         // get next event
         event, err := wm.conn.WaitForEvent()
@@ -611,7 +635,7 @@ func (wm *WindowManager) Run(){
             case xproto.ButtonPressEvent:
                 // set values on current window, used later with moving and resizing
                 ev := event.(xproto.ButtonPressEvent)
-                if ev.Child!=0{
+                if ev.Child!=0&&ev.State&mMask!=0{
                     attr, _ = xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
                     start = ev
                     if ev.Detail == xproto.ButtonIndex1{ 
@@ -622,7 +646,9 @@ func (wm *WindowManager) Run(){
                             []uint32{xproto.StackModeAbove},
                         )
                     }
-                }
+                }else if ev.State&mMask!=0{
+					xproto.AllowEvents(wm.conn, xproto.AllowReplayPointer, xproto.TimeCurrentTime)
+				}
             case xproto.ButtonReleaseEvent:
                 // if we don't have the mouse down, we don't want to move or resize
                 start.Child = 0
@@ -844,6 +870,28 @@ func (wm *WindowManager) Run(){
 					wm.config = cfg
 					wm.reload(start)
 					mMask = wm.mod
+
+				case "next-layout":
+    				windowNum := len(wm.currWorkspace.frametoclient)
+					if windowNum<1{
+						break
+					}
+					totalLen := len(wm.config.Layouts[windowNum])-1
+					if wm.currWorkspace.layoutIndex == totalLen{
+						wm.currWorkspace.layoutIndex = 0
+					}else{
+						wm.currWorkspace.layoutIndex++
+					}
+					wm.layoutIndex=wm.currWorkspace.layoutIndex
+					wm.fitToLayout()
+				case "increase-gap":
+					wm.config.Gap++
+					wm.fitToLayout()
+				case "decrease-gap":
+					if wm.config.Gap>0{
+						wm.config.Gap--
+					}
+					wm.fitToLayout()
                             }
                             switch(kb.Key){
                                 case "0", "1", "2", "3", "4", "5", "6", "7", "8", "9":
@@ -903,7 +951,11 @@ func (wm *WindowManager) Run(){
                 break
             case xproto.ClientMessageEvent:
                 ev := event.(xproto.ClientMessageEvent)
-                atomName, _ := xproto.GetAtomName(wm.conn, xproto.Atom(ev.Type)).Reply()
+				atomName, _ := xproto.GetAtomName(wm.conn, xproto.Atom(ev.Type)).Reply()
+				if atomName.Name == "_NET_CURRENT_DESKTOP" {
+					desktop := int(ev.Data.Data32[0]) // The workspace number the client wants
+					wm.switchWorkspace(desktop)
+				}
                 fmt.Println("Atom name is:", atomName.Name)
                 break
             default:
@@ -911,6 +963,53 @@ func (wm *WindowManager) Run(){
                 fmt.Println(event.Bytes())
 
         }
+    }
+}
+func (wm *WindowManager) declareSupportedAtoms() {
+    // List the names of EWMH atoms your WM supports
+    atomNames := []string{
+        "_NET_SUPPORTED",
+        "_NET_WM_STATE",
+        "_NET_WM_STATE_FULLSCREEN",
+        "_NET_CURRENT_DESKTOP",
+        "_NET_NUMBER_OF_DESKTOPS",
+        "_NET_ACTIVE_WINDOW",
+        "_NET_WM_DESKTOP",
+        "_NET_CLIENT_LIST",
+        "_NET_CLOSE_WINDOW",
+        // Add more as your WM supports them
+    }
+
+    var atoms []xproto.Atom
+    for _, name := range atomNames {
+        atom, err := xproto.InternAtom(wm.conn, false, uint16(len(name)), name).Reply()
+        if err != nil {
+            slog.Error("intern atom", "name", name, "err", err)
+            continue
+        }
+        wm.atoms[name] = atom.Atom
+        atoms = append(atoms, atom.Atom)
+    }
+
+    // Build the property data
+    data := make([]byte, 4*len(atoms))
+    for i, atom := range atoms {
+        binary.LittleEndian.PutUint32(data[i*4:], uint32(atom))
+    }
+
+    // Set the _NET_SUPPORTED property
+    err := xproto.ChangePropertyChecked(
+        wm.conn,
+        xproto.PropModeReplace,
+        wm.root,
+        wm.atoms["_NET_SUPPORTED"],
+        xproto.AtomAtom,
+        32,
+        uint32(len(atoms)),
+        data,
+    ).Check()
+    if err != nil {
+        slog.Error("could not set _NET_SUPPORTED", "err", err)
     }
 }
 func focusWindow(conn *xgb.Conn, win xproto.Window) {
@@ -1019,10 +1118,10 @@ func (wm *WindowManager) createTilingSpace(){
 
     fmt.Println("tiling container:", "X:", X, "Y:", Y, "Width:", width, "Height:", height)
     wm.tilingspace = Space{
-        X: X,
-        Y: Y,
-        Width: width-6,
-        Height: height-6,
+        X: X+int(wm.config.OuterGap),
+        Y: Y+int(wm.config.OuterGap),
+        Width: (width-6)-(int(wm.config.OuterGap)*2),
+        Height: (height-6)-(int(wm.config.OuterGap)*2),
     }
 }
 
@@ -1031,12 +1130,24 @@ func (wm *WindowManager) fitToLayout(){
         return
     }
     // if there are more than 4 windows then just don't do it
+
     windowNum := len(wm.currWorkspace.frametoclient)
-    if windowNum >4||windowNum<1{
+
+	if _, ok := wm.config.Layouts[windowNum]; !ok{
+		return
+	}
+
+	if len(wm.config.Layouts[windowNum])-1<wm.layoutIndex && len(wm.config.Layouts[windowNum])>0{
+		wm.currWorkspace.layoutIndex=0
+		wm.layoutIndex=0
+	}
+
+    if windowNum > len(wm.config.Layouts)||windowNum<1||windowNum>len(wm.config.Layouts[windowNum][wm.layoutIndex].Windows){
         fmt.Println("too many or too few windows to fit to layout in workspace", wm.workspaceIndex+1)
         return
     }
-    layout := wm.layouts[windowNum-1]
+	wm.createTilingSpace()
+    layout := wm.config.Layouts[windowNum][wm.layoutIndex]
     fmt.Println("fit to layout")
     fmt.Println(wm.currWorkspace.windowList)
     //fmt.Println(wm.currWorkspace.windows)
@@ -1281,6 +1392,7 @@ func (wm *WindowManager) switchWorkspace(workspace int){
         wm.disableTiling()
     }
     wm.broadcastWorkspace(workspace)
+	wm.layoutIndex = wm.currWorkspace.layoutIndex
 }
 
 func (wm *WindowManager) SendWmDelete(conn *xgb.Conn, window xproto.Window) error {
@@ -1552,7 +1664,12 @@ func shouldIgnoreWindow(conn *xgb.Conn, win xproto.Window) bool {
         slog.Error("Error getting _NET_WM_WINDOW_TYPE_PANEL atom", "error", err)
         return false
     }
-
+	
+    netWmTooltip, err := xproto.InternAtom(conn, false, uint16(len("_NET_WM_WINDOW_TYPE_TOOLTIP")), "_NET_WM_WINDOW_TYPE_TOOLTIP").Reply()
+    if err != nil {
+        slog.Error("Error getting _NET_WM_WINDOW_TYPE_PANEL atom", "error", err)
+        return false
+    }
 
     netWmDialog, err := xproto.InternAtom(conn, false, uint16(len("_NET_WM_WINDOW_TYPE_DIALOG")), "_NET_WM_WINDOW_TYPE_DIALOG").Reply()
     if err != nil {
@@ -1575,7 +1692,7 @@ func shouldIgnoreWindow(conn *xgb.Conn, win xproto.Window) bool {
     // Check if the window type matches any of the "ignore" types
     windowType := xproto.Atom(binary.LittleEndian.Uint32(actualType.Value))
 
-    if windowType == netWmSplash.Atom || windowType == netWmDialog.Atom || windowType == netWmNotification.Atom || windowType == netWmDock.Atom||windowType==netWmPanel.Atom {
+    if windowType == netWmSplash.Atom || windowType == netWmDialog.Atom || windowType == netWmNotification.Atom || windowType == netWmDock.Atom||windowType==netWmPanel.Atom||windowType==netWmTooltip.Atom {
         return true
     }
 
