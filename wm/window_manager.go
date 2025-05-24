@@ -83,6 +83,7 @@ type Workspace struct{
     frametoclient map[xproto.Window]xproto.Window
     tiling bool
 	layoutIndex int
+	detachTiling bool
     windowList []*Window
 }
 
@@ -294,6 +295,7 @@ func Create() (*WindowManager, error){
             frametoclient: map[xproto.Window]xproto.Window{},
             windowList: []*Window{},
             tiling: false,
+			detachTiling: false,
 			layoutIndex: 0,
         }
     }
@@ -656,7 +658,7 @@ func (wm *WindowManager) Run(){
                 ev := event.(xproto.MotionNotifyEvent)
                 // if we have the mouse down and we are holding the mod key, and if we are not tiling and the window is not full screen then do some simple maths to move and resize
                 if start.Child != 0&&ev.State&mMask!=0{
-                    if wm.tiling || (wm.windows[start.Child]!=nil&&wm.windows[start.Child].Fullscreen){
+                    if wm.currWorkspace.tiling || (wm.windows[start.Child]!=nil&&wm.windows[start.Child].Fullscreen){
                         break
                     }
                     xdiff := ev.RootX - start.RootX
@@ -793,11 +795,14 @@ func (wm *WindowManager) Run(){
                                 case "toggle-tiling":
                                     wm.toggleTiling()
                                     break
+								case "detach-tiling":
+									if wm.currWorkspace.detachTiling{wm.currWorkspace.detachTiling=false}else{wm.currWorkspace.detachTiling=true}
+									wm.fitToLayout()
                                 case "toggle-fullscreen":
                                     wm.toggleFullScreen(ev.Child)
                                 case "swap-window-left":
                                     fmt.Println("swap left")
-                                    if wm.tiling{
+                                    if wm.currWorkspace.tiling{
                                         currWindow := ev.Child
                                         swapLeft:
                                         for i := range wm.currWorkspace.windowList{
@@ -818,7 +823,7 @@ func (wm *WindowManager) Run(){
                                     }
                                 case "swap-window-right":
                                     fmt.Println("swap right")
-                                    if wm.tiling{
+                                    if wm.currWorkspace.tiling{
                                         currWindow := ev.Child
                                         swapRight:
                                         for i := range wm.currWorkspace.windowList{
@@ -835,7 +840,7 @@ func (wm *WindowManager) Run(){
                                         }
 				    }
 				case "focus-window-right":
-                                    if wm.tiling{
+                                    if wm.currWorkspace.tiling{
                                         currWindow := ev.Child
                                         focusRight:
                                         for i := range wm.currWorkspace.windowList{
@@ -850,7 +855,7 @@ func (wm *WindowManager) Run(){
                                         }
 				    }
 			    	case "focus-window-left":
-                                    if wm.tiling{
+                                    if wm.currWorkspace.tiling{
                                         currWindow := ev.Child
                                         focusLeft:
                                         for i := range wm.currWorkspace.windowList{
@@ -1126,7 +1131,7 @@ func (wm *WindowManager) createTilingSpace(){
 }
 
 func (wm *WindowManager) fitToLayout(){
-    if !wm.tiling{
+    if !wm.currWorkspace.tiling{
         return
     }
     // if there are more than 4 windows then just don't do it
@@ -1193,13 +1198,21 @@ func (wm *WindowManager) configureWindow(Frame xproto.Window, X, Y, Width, Heigh
 }
 
 func (wm *WindowManager) toggleTiling(){
-    if !wm.tiling{
-        wm.tiling=true
-        wm.enableTiling()
-    }else{
-        wm.tiling=false
-        wm.disableTiling()
-    }
+	if !wm.currWorkspace.detachTiling{
+		if !wm.tiling{
+			wm.tiling=true
+			wm.enableTiling()
+		}else{
+			wm.tiling=false
+			wm.disableTiling()
+		}
+	}else{
+		if !wm.currWorkspace.tiling{
+			wm.enableTiling()
+		}else{
+			wm.disableTiling()
+		}
+	}
 }
 
 func (wm *WindowManager) disableTiling(){
@@ -1386,11 +1399,13 @@ func (wm *WindowManager) switchWorkspace(workspace int){
     wm.conn.Sync()
 
     // update tiling
-    if wm.tiling && !wm.currWorkspace.tiling{
-        wm.enableTiling()
-    }else if !wm.tiling && wm.currWorkspace.tiling{
-        wm.disableTiling()
-    }
+	if !wm.currWorkspace.detachTiling{
+		if wm.tiling && !wm.currWorkspace.tiling{
+			wm.enableTiling()
+		}else if !wm.tiling && wm.currWorkspace.tiling{
+			wm.disableTiling()
+		}
+	}
     wm.broadcastWorkspace(workspace)
 	wm.layoutIndex = wm.currWorkspace.layoutIndex
 }
@@ -1717,7 +1732,7 @@ func (wm *WindowManager) OnMapRequest(event xproto.MapRequestEvent){
 
     // frame the window and make sure to work out the new tiling layout
     wm.Frame(event.Window, false)
-    if wm.tiling{
+    if wm.currWorkspace.tiling{
         wm.fitToLayout()
     }
     err := xproto.MapWindowChecked(
