@@ -20,7 +20,7 @@
 </p>
 
 ## Description
-doWM is a mainly floating but also tiling window manager for X11 completely written in golang.
+doWM is a beautiful floating and tiling window manager for X11 completely written in golang.
 
 ## Installation
 Currently the best way is to build from source:
@@ -72,7 +72,7 @@ for example:
     shift: false
     exec: "kitty"
   # When mod + shift + right arrow is pressed then switch the focused window to the right
-  - key "right"
+  - key: "right"
     shift: true
     role: "swap-window-right"
 ```
