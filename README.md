@@ -30,11 +30,16 @@ You will want to have go installed
 ```bash
 git clone https://github.com/BobdaProgrammer/doWM
 cd doWM
-make build
+go build -o ./doWM
 make install
 ```
 
-then to see a normal config look at `exampleConfig` folder, you can copy this to ~/.config/doWM and then write your own configuration
+then to see a normal config look at `exampleConfig` folder, you can copy this to ~/.config/doWM and then write your own configuration  
+
+-------------
+
+> [!WARNING]
+> make sure to make the autostart.sh executable and to use a config, otherwise you could be left in the black with no way to escape!
 
 ## Configuration
 doWM is configured with `~/.config/doWM/doWM.yml` and `~/.confiig/doWM/autostart.sh`
