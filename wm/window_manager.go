@@ -1105,7 +1105,10 @@ func (wm *WindowManager) createTilingSpace(){
     height := wm.height
 
     for _, window := range windows.Children{
-        attributes, _ := xproto.GetWindowAttributes(wm.conn, window).Reply()
+        attributes, err := xproto.GetWindowAttributes(wm.conn, window).Reply()
+	if err != nil{
+	    continue
+	}
         if attributes.MapState == xproto.MapStateViewable{
             atom := wm.atoms["_NET_WM_STRUT_PARTIAL"]
             prop, err := xproto.GetProperty(wm.conn, false, window, atom, xproto.AtomCardinal, 0, 12).Reply()
@@ -1620,7 +1623,6 @@ func (wm *WindowManager) UnFrame(w xproto.Window, unmapped bool){
     ).Check()
     if err!=nil{
         slog.Error("couldn't reparent window during unmapping", "error:", err.Error())
-        return
     }
 
     // delete window from x11 set
