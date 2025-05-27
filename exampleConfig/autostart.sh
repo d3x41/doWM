@@ -1,5 +1,10 @@
 #!/bin/bash
 
-feh --bg-scale ~/wallpaper.png
+dunst &
+feh --bg-scale ~/wallpapers/wal.png
 
 polybar &
+
+# Pijulius picom
+~/picom/build/src/picom &
+
