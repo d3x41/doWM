@@ -19,6 +19,14 @@
     </a>
 </p>
 
+## Contents
+- [Description](#description)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Screenshots](#screenshots)
+- [Progress](#progress)
+- [Bugs](#bugs)
+
 ## Description
 doWM is a beautiful floating and tiling window manager for X11 completely written in golang.
 
@@ -49,15 +57,59 @@ the main config file is very simple and is described clearly in the comments on 
 Colors are to be written in hex format starting with 0x for example white: 0xffffff (could be 0xFFFFFF it is case insensitive)
 
 You have a few general options:
+- outer-gap (gap from edge of tiling space to windows)
 - gaps (pixel gaps in tiling)
+- default-tiling (if true, tiling will be enabled on start)
 - mod-key (which key should be used for all wm commands)
 - border-width (border width of windows)
 - unactive-border-color (the color for the border of unactive windows
 - active-border-color (the color for the border of an active window)
 
-there are some default keybinds like modkey+(0-9) to switch workspaces and with a shift to move a window between workspaces
+Although there are some default tiling layouts which will serve you well, you can easily customize your tiling layouts. The system works quite simply, in the `layouts:` you would have a list of each of the window numbers you want to have a layout/s for, for example 1 through 5 so you would have layouts for up to 5 windows in a workspace, any more than that and the window would just be placed above the windows to be moved to a seperate workspace or closed. For each window number, you specify `- windows:` for each layout, in side of windows you would have a list of windows, represented like this:
+```yml
+- x: 0.0 # the X percentage in the tiling space, 0.5 would have the top left corner halfway through the width of the tiling space
+  y: 0.0 # the Y percentage in the tiling space
+  width: 1.0 # The width percentage in the tiling space, 1.0 is the whole width
+  height: 1.0 # The height percentage in the tiling space
+```
+In the example above, it would have one window that takes up the whole space since its top left corner is at (0, 0) and its width and height are the full tiling space.
+Below is an example of a simple layout config for 1 and 2 windows:
+```yml
+layouts:
+  - 1:
+    - windows: # 1 window - takes up whole space
+      - x: 0.0
+        y: 0.0
+        width: 1.0
+        height: 1.0
 
-then there are keybinds, each keybind either executes a command or plays a role in the wm. Here are all the roles:
+
+  - 2:
+    - windows: # 2 windows - 1st layout is split halfway - 2nd layout is for one being 2/3 of the width, the other 1/3
+      - x: 0.0
+        y: 0.0
+        width: 0.5
+        height: 1.0
+      - x: 0.5
+        y: 0.0
+        width: 0.5
+        height: 1.0
+    - windows:
+      - x: 0.0
+        y: 0.0
+        width: 0.66666666
+        height: 1.0
+      - x: 0.6666666666666
+        y: 0.0
+        width: 0.33333333333333
+        height: 1
+```
+There is much longer one that goes up to 10 windows in the example config that you can check out
+
+
+there are also some default keybinds like modkey+(0-9) to switch workspaces and with a shift to move a window between workspaces, but you can also set your own keybinds
+
+each keybind either executes a command or plays a role in the wm. Here are all the roles:
 - quit (close window)
 - force-quit (force close window)
 - toggle-tiling (toggle tiling mode)
@@ -67,6 +119,10 @@ then there are keybinds, each keybind either executes a command or plays a role 
 - focus-window-left (focus the window to the left in tiling mode)
 - focus-window-right (focus the window to the right in tiling mode)
 - reload-config (reload doWM.yml)
+- increase-gap (increase gap between windows in tiling temporarily - reset next session)
+- decrease-gap (decrease gap between windows in tiling, also temporary)
+- detach-tiling (sepearate a workspace from global tiling - e.g that workspace could be floating with rest tiling - it is also toggling, so if detached it will re-attach)
+- next-layout (switch to the next layout for the current window number)
 
 each keybind also has a key and a shift option, key is the character of the key (can also be things like "F1") and shift is a bool for if shift should be pressed or not to register.
 
@@ -107,7 +163,13 @@ For an example config, look at [/exampleConfig](https://github.com/BobdaProgramm
 - [x] keybinds
 - [x] floating
 - [x] tiling
+- [x] swap windows in tiling
+- [x] change focus in tiling
+- [x] many layouts 
 - [x] bar support
 - [x] fullscreen
 - [x] startup commands
 - [x] picom support
+
+## bugs
+ - dragging tabs in firefox and just drag and drop in general
