@@ -585,10 +585,10 @@ func (wm *WindowManager) Run(){
     fmt.Println(wm.config.Keybinds)
 
 
-// Only grab with Mod + left or right click (not plain Button1)
-    err = xproto.GrabButtonChecked(wm.conn, true, wm.root, 	uint16(xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease | xproto.EventMaskPointerMotion), xproto.GrabModeAsync, xproto.GrabModeAsync, xproto.WindowNone, xproto.AtomNone, xproto.ButtonIndex1, mMask).Check()
+	// Only grab with Mod + left or right click (not plain Button1)
+    err = xproto.GrabButtonChecked(wm.conn, false, wm.root, 	uint16(xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease | xproto.EventMaskPointerMotion), xproto.GrabModeAsync, xproto.GrabModeAsync, xproto.WindowNone, xproto.AtomNone, xproto.ButtonIndex1, mMask).Check()
 
-    err = xproto.GrabButtonChecked(wm.conn, true, wm.root, 	uint16(xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease | xproto.EventMaskPointerMotion), xproto.GrabModeAsync, xproto.GrabModeAsync, xproto.WindowNone, xproto.AtomNone, xproto.ButtonIndex3, mMask).Check()
+    err = xproto.GrabButtonChecked(wm.conn, false, wm.root, 	uint16(xproto.EventMaskButtonPress | xproto.EventMaskButtonRelease | xproto.EventMaskPointerMotion), xproto.GrabModeAsync, xproto.GrabModeAsync, xproto.WindowNone, xproto.AtomNone, xproto.ButtonIndex3, mMask).Check()
 
 
     if err!=nil{
@@ -648,12 +648,13 @@ func (wm *WindowManager) Run(){
                             []uint32{xproto.StackModeAbove},
                         )
                     }
-                }else if ev.State&mMask!=0{
+                }else if ev.State&mMask==0{
 					xproto.AllowEvents(wm.conn, xproto.AllowReplayPointer, xproto.TimeCurrentTime)
 				}
             case xproto.ButtonReleaseEvent:
                 // if we don't have the mouse down, we don't want to move or resize
                 start.Child = 0
+				xproto.AllowEvents(wm.conn, xproto.AllowReplayPointer, xproto.TimeCurrentTime)
             case xproto.MotionNotifyEvent:
                 ev := event.(xproto.MotionNotifyEvent)
                 // if we have the mouse down and we are holding the mod key, and if we are not tiling and the window is not full screen then do some simple maths to move and resize
@@ -992,6 +993,7 @@ func (wm *WindowManager) declareSupportedAtoms() {
         "_NET_WM_DESKTOP",
         "_NET_CLIENT_LIST",
         "_NET_CLOSE_WINDOW",
+		"_NET_WM_MOVERESIZE",
         // Add more as your WM supports them
     }
 
@@ -1171,8 +1173,10 @@ func (wm *WindowManager) fitToLayout(){
     //fmt.Println(wm.currWorkspace.windows)
     //fmt.Println(len(wm.currWorkspace.windows))
     // for each window put it in its place and size specified by that layout
+	fullscreen := []xproto.Window{}
     for i, WindowData := range wm.currWorkspace.windowList{
         if WindowData.Fullscreen{
+			fullscreen= append(fullscreen, WindowData.id)
             continue
         }
         layoutWindow := layout.Windows[i]
@@ -1184,6 +1188,11 @@ func (wm *WindowManager) fitToLayout(){
         fmt.Println("window:", WindowData.id, "X:", X, "Y:", Y, "Width:", Width, "Height:", Height)
         wm.configureWindow(WindowData.id, X, Y, int(Width), int(Height))
     }
+	if len(fullscreen)!=0{
+		for _, win := range fullscreen{
+            xproto.ConfigureWindow(wm.conn, win, xproto.ConfigWindowStackMode, []uint32{xproto.StackModeAbove})
+		}
+	}
 }
 
 func (wm *WindowManager) configureWindow(Frame xproto.Window, X, Y, Width, Height int){
@@ -1528,7 +1537,7 @@ func (wm *WindowManager) OnEnterNotify(event xproto.EnterNotifyEvent){
     // set focus when we enter a window and change border color
     err:=xproto.SetInputFocusChecked(wm.conn, xproto.InputFocusPointerRoot, event.Event, xproto.TimeCurrentTime).Check()
     Col := wm.config.BorderActive
-    err = xproto.ChangeWindowAttributesChecked(
+	err = xproto.ChangeWindowAttributesChecked(
         wm.conn,
         wm.currWorkspace.clients[event.Event],
         xproto.CwBackPixel|xproto.CwBorderPixel,
@@ -1752,8 +1761,6 @@ func (wm *WindowManager) OnMapRequest(event xproto.MapRequestEvent){
         event.Window,
     ).Check()
 
-    // half-hearted attempt to stop black frames for some things without a compositor (it doesn't work)
-    xproto.ChangeWindowAttributes(wm.conn, event.Window, xproto.CwBackPixmap, []uint32{xproto.BackPixmapNone})
 
     if err != nil {
         slog.Error("Couldn't create new window id","error:", err.Error())
@@ -1832,7 +1839,7 @@ func (wm *WindowManager) Frame(w xproto.Window, createdBeforeWM bool){
             Col, // background
             Col, // border color
             xproto.EventMaskSubstructureRedirect |
-            xproto.EventMaskSubstructureNotify  | xproto.EventMaskKeyPress | xproto.EventMaskButtonPress | xproto.EventMaskKeyRelease | xproto.EventMaskButtonRelease | xproto.EventMaskPointerMotion,
+            xproto.EventMaskSubstructureNotify  | xproto.EventMaskKeyPress  | xproto.EventMaskKeyRelease ,
         },
     ).Check()
 
