@@ -170,6 +170,7 @@ For an example config, look at [/exampleConfig](https://github.com/BobdaProgramm
 - [x] fullscreen
 - [x] startup commands
 - [x] picom support
+- [ ] multi monitor support
 
 ## bugs
  - dragging tabs in firefox and just drag and drop in general
