@@ -69,6 +69,7 @@ type Window struct{
     X,Y int
     Width, Height int
     Fullscreen bool
+	Client xproto.Window
 }
 
 // an area on the screen
@@ -610,6 +611,7 @@ func (wm *WindowManager) Run(){
         "_NET_WM_WINDOW_TYPE",
         "_NET_WM_WINDOW_TYPE_DOCK",
         "_NET_WM_STRUT_PARTIAL",
+		"_NET_WORKAREA",
 		"_NET_CURRENT_DESKTOP",
     }
 
@@ -955,6 +957,8 @@ func (wm *WindowManager) Run(){
                                         wm.currWorkspace.frametoclient[w]=client
                                         wm.currWorkspace.windowList=append(wm.currWorkspace.windowList, &window)
                                         wm.currWorkspace.clients[client]=w 
+										wm.setWindowDesktop(client, uint32(wm.workspaceIndex))
+										wm.setWindowDesktop(wm.currWorkspace.clients[client], uint32(wm.workspaceIndex))
                                     }
                                     wm.fitToLayout()
                                     
@@ -986,6 +990,8 @@ func (wm *WindowManager) declareSupportedAtoms() {
     atomNames := []string{
         "_NET_SUPPORTED",
         "_NET_WM_STATE",
+		"_NET_WM_NAME",
+		"_WM_NAME",
         "_NET_WM_STATE_FULLSCREEN",
         "_NET_CURRENT_DESKTOP",
         "_NET_NUMBER_OF_DESKTOPS",
@@ -994,7 +1000,6 @@ func (wm *WindowManager) declareSupportedAtoms() {
         "_NET_CLIENT_LIST",
         "_NET_CLOSE_WINDOW",
 		"_NET_WM_MOVERESIZE",
-        // Add more as your WM supports them
     }
 
     var atoms []xproto.Atom
@@ -1248,6 +1253,7 @@ func (wm *WindowManager) disableTiling(){
             }
             wm.configureWindow(window.id, window.X, window.Y, window.Width, window.Height)
         }
+		wm.setNetWorkArea()
 }
 
 func (wm *WindowManager) enableTiling(){
@@ -1267,12 +1273,14 @@ func (wm *WindowManager) enableTiling(){
                 Width: int(attr.Width),
                 Height: int(attr.Height),
                 Fullscreen: false,
+				Client: window.Client,
             }
         }
         fmt.Println("tiling")
         // put the windows in the right tiling layout in the right space
         wm.createTilingSpace()
         wm.fitToLayout()
+		wm.setNetWorkArea()
 }
 
 func (wm *WindowManager) toggleFullScreen(Child xproto.Window){
@@ -1400,6 +1408,10 @@ func (wm *WindowManager) broadcastWorkspace(num int){
 }
 
 func (wm *WindowManager) switchWorkspace(workspace int){
+	if workspace > len(wm.workspaces){
+		return
+	}
+
     if workspace==wm.workspaceIndex{
         return
     }
@@ -1533,6 +1545,70 @@ func (wm *WindowManager) setNetActiveWindow(win xproto.Window) {
     )
 }
 
+
+func (wm *WindowManager) setNetWorkArea() {
+	atomWorkArea, err := xproto.InternAtom(wm.conn, true, uint16(len("_NET_WORKAREA")), "_NET_WORKAREA").Reply()
+	if err != nil {
+		// handle error properly here
+		return
+	}
+
+	buf := new(bytes.Buffer)
+
+	spaceX, spaceY, spaceWidth, spaceHeight := wm.tilingspace.X, wm.tilingspace.Y, wm.tilingspace.Width, wm.tilingspace.Height
+
+	for _, wksp := range wm.workspaces {
+		if !wksp.tiling {
+			_ = binary.Write(buf, binary.LittleEndian, uint32(0))
+			_ = binary.Write(buf, binary.LittleEndian, uint32(0))
+			_ = binary.Write(buf, binary.LittleEndian, uint32(wm.width))
+			_ = binary.Write(buf, binary.LittleEndian, uint32(wm.height))
+		} else {
+			_ = binary.Write(buf, binary.LittleEndian, uint32(spaceX))
+			_ = binary.Write(buf, binary.LittleEndian, uint32(spaceY))
+			_ = binary.Write(buf, binary.LittleEndian, uint32(spaceWidth))
+			_ = binary.Write(buf, binary.LittleEndian, uint32(spaceHeight))
+		}
+	}
+
+	// Number of 32-bit CARDINAL values: 4 values per workspace
+	numValues := uint32(4 * len(wm.workspaces))
+
+	err = xproto.ChangePropertyChecked(
+		wm.conn,
+		xproto.PropModeReplace,
+		wm.root,
+		atomWorkArea.Atom,
+		xproto.AtomCardinal,
+		32,
+		numValues,
+		buf.Bytes(),
+	).Check()
+
+	if err != nil {
+		slog.Error("couldn't set the work area", "error:", err)
+	}
+}
+
+
+func (wm *WindowManager) setNetClientList() {
+    atomClientList, _ := xproto.InternAtom(wm.conn, true, uint16(len("_NET_CLIENT_LIST")), "_NET_CLIENT_LIST").Reply()
+
+    buf := new(bytes.Buffer)
+    for _, info := range wm.windows {
+        _ = binary.Write(buf, binary.LittleEndian, info.Client)
+    }
+
+    xproto.ChangeProperty(wm.conn,
+        xproto.PropModeReplace,
+        wm.root,
+        atomClientList.Atom,
+        xproto.AtomWindow,
+        32,
+        uint32(len(wm.windows)),
+        buf.Bytes(),
+    )
+}
 func (wm *WindowManager) OnEnterNotify(event xproto.EnterNotifyEvent){
     // set focus when we enter a window and change border color
     err:=xproto.SetInputFocusChecked(wm.conn, xproto.InputFocusPointerRoot, event.Event, xproto.TimeCurrentTime).Check()
@@ -1622,6 +1698,12 @@ func (wm *WindowManager) UnFrame(w xproto.Window, unmapped bool){
             slog.Error("couldn't unmap frame", "error:", err.Error())
             return
         }
+    // remove window and frame from current workspace record
+    delete(wm.currWorkspace.clients, w)
+    remove(&wm.currWorkspace.windowList, frame)
+    delete(wm.windows, frame)
+    delete(wm.currWorkspace.frametoclient, frame)
+	wm.setNetClientList()
 
     // take the client from the frame to the root, so we can delete the frame
     err = xproto.ReparentWindowChecked(
@@ -1657,15 +1739,26 @@ func (wm *WindowManager) UnFrame(w xproto.Window, unmapped bool){
         return
     }
 
-    // remove window and frame from current workspace record
-    delete(wm.currWorkspace.clients, w)
-    remove(&wm.currWorkspace.windowList, frame)
-    delete(wm.windows, frame)
-    delete(wm.currWorkspace.frametoclient, frame)
     slog.Info("Unmapped", "frame", frame, "window", w)
 }
 
 
+func (wm *WindowManager) setWindowDesktop(win xproto.Window, desktop uint32) {
+    atomWmDesktop, _ := xproto.InternAtom(wm.conn, true, uint16(len("_NET_WM_DESKTOP")), "_NET_WM_DESKTOP").Reply()
+
+    buf := new(bytes.Buffer)
+    _ = binary.Write(buf, binary.LittleEndian, desktop)
+
+    xproto.ChangeProperty(wm.conn,
+        xproto.PropModeReplace,
+        win,                      // client window
+        atomWmDesktop.Atom,       // _NET_WM_DESKTOP
+        xproto.AtomCardinal,      // CARDINAL
+        32,
+        1,
+        buf.Bytes(),
+    )
+}
 
 func shouldIgnoreWindow(conn *xgb.Conn, win xproto.Window) bool {
     // some windows don't want to be registered by the WM so we check that
@@ -1761,7 +1854,8 @@ func (wm *WindowManager) OnMapRequest(event xproto.MapRequestEvent){
         event.Window,
     ).Check()
 
-
+	wm.setWindowDesktop(event.Window, uint32(wm.workspaceIndex))
+	wm.setWindowDesktop(wm.currWorkspace.clients[event.Window], uint32(wm.workspaceIndex))
     if err != nil {
         slog.Error("Couldn't create new window id","error:", err.Error())
     }
@@ -1903,8 +1997,10 @@ func (wm *WindowManager) Frame(w xproto.Window, createdBeforeWM bool){
         Height: int(geometry.Height),
         Fullscreen: false,
         id: frameId,
+		Client: w,
     })
     wm.windows[frameId]=wm.currWorkspace.windowList[len(wm.currWorkspace.windowList)-1]
+	wm.setNetClientList()
     fmt.Println("Framed window"+strconv.Itoa(int(w))+"["+strconv.Itoa(int(frameId))+"]")
 }
 

@@ -404,7 +404,7 @@ layouts:
 # - reload-config = reload the config (not autostart.sh)
 # - increase-gap = increase the gap between tiling windows (not perminent so resets next session)
 # - decrease gap = decrease the gap between tiling windows (also not perminent)
-# - detach-tiling = make a workspace's tiling seperate from the global tiling, so it could be floating while the other workspaces are tiling, this is toggling, so if it is detached it will undetached, otherwise it will detach
+# - detach-tiling = make a workspace's tiling seperate from the global tiling, so it could be floating while the other workspaces are tiling, this is toggling, so if it is detached it will attach, otherwise it will detach
 # - next-layout = switch to the next layout for the current window number
 keybinds:
   - key: "w"
