@@ -14,9 +14,6 @@
        <a href="https://github.com/BobdaProgrammer/doWM/blob/main/LICENSE" target="_blank">
       <img alt="License" src="https://img.shields.io/github/license/BobdaProgrammer/doWM?style=for-the-badge&logo=starship&color=ee999f&logoColor=D9E0EE&labelColor=302D41" />
     </a>  
-    <a href="https://github.com/BobdaProgrammer/doWM" target="_blank">
-      <img alt="Repo Size" src="https://img.shields.io/github/repo-size/BobdaProgrammer/doWM?color=%23DDB6F2&label=SIZE&logo=codesandbox&style=for-the-badge&logoColor=D9E0EE&labelColor=302D41" />
-    </a>
 </p>
 
 ## Contents
