@@ -1180,6 +1180,7 @@ func (wm *WindowManager) fitToLayout(){
     // for each window put it in its place and size specified by that layout
 	fullscreen := []xproto.Window{}
     for i, WindowData := range wm.currWorkspace.windowList{
+		fmt.Println(WindowData)
         if WindowData.Fullscreen{
 			fullscreen= append(fullscreen, WindowData.id)
             continue
@@ -1193,9 +1194,10 @@ func (wm *WindowManager) fitToLayout(){
         fmt.Println("window:", WindowData.id, "X:", X, "Y:", Y, "Width:", Width, "Height:", Height)
         wm.configureWindow(WindowData.id, X, Y, int(Width), int(Height))
     }
-	if len(fullscreen)!=0{
+	if len(fullscreen)>0{
 		for _, win := range fullscreen{
             xproto.ConfigureWindow(wm.conn, win, xproto.ConfigWindowStackMode, []uint32{xproto.StackModeAbove})
+			wm.fullscreen(wm.windows[win],win)
 		}
 	}
 }
@@ -1247,10 +1249,7 @@ func (wm *WindowManager) disableTiling(){
         fmt.Println("DISABLED TILING")
         // restore windows to there previous state (before tiling)
         for _, window := range wm.currWorkspace.windowList{
-            if window.Fullscreen{
-                fmt.Println("from: disable tiling, toggling fullscreen on window", window.id)
-                wm.toggleFullScreen(window.id)
-            }
+
             wm.configureWindow(window.id, window.X, window.Y, window.Width, window.Height)
         }
 		wm.setNetWorkArea()
@@ -1260,10 +1259,6 @@ func (wm *WindowManager) enableTiling(){
         wm.currWorkspace.tiling = true
         // make sure no windows are fullscreened and that there state is saved (so it can be restored later if/when the user disables tiling)
         for i, window := range wm.currWorkspace.windowList{
-            if window.Fullscreen{
-                fmt.Println("from: enable tiling, toggling fullscreen on window", window.id)
-                wm.toggleFullScreen(window.id)
-            }
             fmt.Println(window.id)
             attr, _ := xproto.GetGeometry(wm.conn, xproto.Drawable(window.id)).Reply()
             wm.currWorkspace.windowList[i] = &Window{
@@ -1287,32 +1282,54 @@ func (wm *WindowManager) toggleFullScreen(Child xproto.Window){
     win := wm.windows[Child]
     if win != nil{
         if win.Fullscreen{
-            win.Fullscreen = false
-            // set the frame back to what it used to be same with the client, but sort out tiling layout anyway just in case
-            err := xproto.ConfigureWindowChecked(
-                wm.conn,
-                Child,
-                xproto.ConfigWindowX | xproto.ConfigWindowY |
-                xproto.ConfigWindowWidth | xproto.ConfigWindowHeight | xproto.ConfigWindowBorderWidth,
-                []uint32{uint32(win.X), uint32(win.Y), uint32(win.Width), uint32(win.Height), wm.config.BorderWidth},
-            ).Check()
-            err = xproto.ConfigureWindowChecked(
-                wm.conn,
-                wm.currWorkspace.frametoclient[Child],
-                xproto.ConfigWindowX | xproto.ConfigWindowY |
-                xproto.ConfigWindowWidth | xproto.ConfigWindowHeight,
-                []uint32{0, 0, uint32(win.Width), uint32(win.Height)},
-            ).Check()
-            if err != nil{
-                slog.Error("couldn't un fullscreen window", "error: ", err)
-            }
-            wm.fitToLayout()
+			wm.disableFullscreen(win, Child)
         }else{
+			wm.fullscreen(win, Child)
+        }
+    }
+}
+
+func (wm *WindowManager) disableFullscreen(win *Window, Child xproto.Window){
+	fmt.Println("DISABLING FULL SCREEN")
+	wm.windows[Child].Fullscreen = false
+	for i, window:= range wm.currWorkspace.windowList{
+				if window.id == Child{
+					wm.currWorkspace.windowList[i].Fullscreen=false
+				}
+				fmt.Println(window.Fullscreen)
+	}
+	// set the frame back to what it used to be same with the client, but sort out tiling layout anyway just in case
+	err := xproto.ConfigureWindowChecked(
+		wm.conn,
+		Child,
+		xproto.ConfigWindowX | xproto.ConfigWindowY |
+		xproto.ConfigWindowWidth | xproto.ConfigWindowHeight | xproto.ConfigWindowBorderWidth,
+		[]uint32{uint32(win.X), uint32(win.Y), uint32(win.Width), uint32(win.Height), wm.config.BorderWidth},
+	).Check()
+	err = xproto.ConfigureWindowChecked(
+		wm.conn,
+		wm.currWorkspace.frametoclient[Child],
+		xproto.ConfigWindowX | xproto.ConfigWindowY |
+		xproto.ConfigWindowWidth | xproto.ConfigWindowHeight,
+		[]uint32{0, 0, uint32(win.Width), uint32(win.Height)},
+	).Check()
+	if err != nil{
+		slog.Error("couldn't un fullscreen window", "error: ", err)
+	}
+	wm.fitToLayout()
+}
+
+func (wm *WindowManager) fullscreen(win *Window, Child xproto.Window){
             // set window state so it can be restored later then configure window to be full width and height, sam with client, also take away border
-            win.Fullscreen = true
+            wm.windows[Child].Fullscreen = true
+			for i, window:= range wm.currWorkspace.windowList{
+				if window.id == Child{
+					wm.currWorkspace.windowList[i].Fullscreen=true
+				}
+			}
             xproto.ConfigureWindow(wm.conn, Child, xproto.ConfigWindowStackMode, []uint32{xproto.StackModeAbove})
             attr, _ := xproto.GetGeometry(wm.conn, xproto.Drawable(Child)).Reply()
-            win := wm.windows[Child]
+            win = wm.windows[Child]
             win.X = int(attr.X)
             win.Y = int(attr.Y)
             win.Width = int(attr.Width)
@@ -1334,8 +1351,6 @@ func (wm *WindowManager) toggleFullScreen(Child xproto.Window){
             if err != nil{
                 slog.Error("couldn't fullscreen window", "error:", err)
             }
-        }
-    }
 }
 
 func (wm *WindowManager) broadcastWorkspaceCount() {
