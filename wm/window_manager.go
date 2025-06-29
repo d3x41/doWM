@@ -1843,6 +1843,41 @@ func shouldIgnoreWindow(conn *xgb.Conn, win xproto.Window) bool {
     return false
 }
 
+func (wm *WindowManager)isAbove(w xproto.Window){
+	fmt.Println(wm.atoms)
+	stateAtom, ok := wm.atoms["_NET_WM_STATE"]
+	if ok{
+	stateAboveAtom, ok := wm.atoms["_NET_WM_STATE_ABOVE"]
+	if ok{
+
+	// Get property
+    prop, err := xproto.GetProperty(wm.conn, false, w, stateAtom,
+        xproto.AtomAtom, 0, 1024).Reply()
+    if err != nil {
+        slog.Error("Error getting _NET_WM_STATE","error:", err)
+		return
+    }
+
+    // Iterate through atoms in the property
+    for i := 0; i+4 <= len(prop.Value); i += 4 {
+        atom := xproto.Atom(uint32(prop.Value[i]) |
+            uint32(prop.Value[i+1])<<8 |
+            uint32(prop.Value[i+2])<<16 |
+            uint32(prop.Value[i+3])<<24)
+
+        if atom == stateAboveAtom {
+			xproto.ConfigureWindow(
+				wm.conn,
+				w,
+				xproto.ConfigWindowStackMode,
+				[]uint32{xproto.StackModeAbove},
+			)
+            break
+        }
+    }
+	}
+	}
+}
 
 func (wm *WindowManager) OnMapRequest(event xproto.MapRequestEvent){
 
@@ -1864,16 +1899,10 @@ func (wm *WindowManager) OnMapRequest(event xproto.MapRequestEvent){
     if wm.currWorkspace.tiling{
         wm.fitToLayout()
     }
-    err := xproto.MapWindowChecked(
-        wm.conn,
-        event.Window,
-    ).Check()
+
 
 	wm.setWindowDesktop(event.Window, uint32(wm.workspaceIndex))
 	wm.setWindowDesktop(wm.currWorkspace.clients[event.Window], uint32(wm.workspaceIndex))
-    if err != nil {
-        slog.Error("Couldn't create new window id","error:", err.Error())
-    }
 }
 
 func (wm *WindowManager) Frame(w xproto.Window, createdBeforeWM bool){
@@ -1902,6 +1931,8 @@ func (wm *WindowManager) Frame(w xproto.Window, createdBeforeWM bool){
         slog.Error("Couldn't get window attributes","error:", err.Error())
         return
     }
+
+	wm.isAbove(w)
 
     // skips
     if attribs.OverrideRedirect {
@@ -1990,7 +2021,17 @@ func (wm *WindowManager) Frame(w xproto.Window, createdBeforeWM bool){
     }
 
     setFrameWindowType(wm.conn, frameId)
+	
+	if(!createdBeforeWM){
+		err := xproto.MapWindowChecked(
+			wm.conn,
+			w,
+		).Check()
 
+		if err!=nil{
+			slog.Error("couldnt map window", "error:", err.Error())
+		}
+	}
     // map the frame
     err = xproto.MapWindowChecked(
         wm.conn,
@@ -2001,6 +2042,13 @@ func (wm *WindowManager) Frame(w xproto.Window, createdBeforeWM bool){
         slog.Error("Couldn't map window","error:", err.Error())
         return
     }
+
+	wins, err := xproto.QueryTree(wm.conn, wm.root).Reply()
+	if err == nil{
+		for _, win := range wins.Children{
+			wm.isAbove(win)
+		}
+	}
 
     // add all of this to the current workspace record
     wm.currWorkspace.clients[w] = frameId
