@@ -139,14 +139,14 @@ For an example config, look at [/exampleConfig](https://github.com/BobdaProgramm
 
 ## screenshots
 <div align="center">
-<img src="https://github.com/BobdaProgrammer/doWM/blob/main/images/floating.png?raw=true" width="500px">
-<img src="https://github.com/BobdaProgrammer/doWM/blob/main/images/tiling.png?raw=true" width="500px">
+<img src="https://github.com/BobdaProgrammer/doWM/blob/main/images/gruvbox.png?raw=true" width="500px">
+<img src="https://github.com/BobdaProgrammer/doWM/blob/main/images/pinkgradient.png?raw=true" width="500px">
   
-<img src="https://github.com/BobdaProgrammer/doWM/blob/main/images/floatingTerminals.png?raw=true" width="500px">
-<img src="https://github.com/BobdaProgrammer/doWM/blob/main/images/tilingTerminals.png?raw=true" width="500px">
+<img src="https://github.com/BobdaProgrammer/doWM/blob/main/images/8windowsweirdlayout.png?raw=true" width="500px">
+<img src="https://github.com/BobdaProgrammer/doWM/blob/main/images/fabricnotification.png?raw=true" width="500px">
 
-<img src="https://github.com/BobdaProgrammer/doWM/blob/main/images/rofi.png?raw=true" width="500px">
-<img src="https://github.com/BobdaProgrammer/doWM/blob/main/images/musicWindow.png?raw=true" width="500px">
+<img src="https://github.com/BobdaProgrammer/doWM/blob/main/images/musicwithnotification.png?raw=true" width="500px">
+<img src="https://github.com/BobdaProgrammer/doWM/blob/main/images/workspaceviewergruvbox.png?raw=true" width="500px">
 </div>  
 
 -------------
