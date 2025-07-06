@@ -46,6 +46,12 @@ then to see a normal config look at `exampleConfig` folder, you can copy this to
 > [!WARNING]
 > make sure to make the autostart.sh executable and to use a config, otherwise you could be left in the black with no way to escape!
 
+```
+mkdir ~/.config/doWM
+cp -r ./exampleConfig/* ~/.config/doWM/ 
+chmod +x ~/.config/doWM/autostart.sh        
+```
+
 ## Configuration
 doWM is configured with `~/.config/doWM/doWM.yml` and `~/.confiig/doWM/autostart.sh`
 simply put any autostart commands in autostart.sh, and then remember to chmod +x it.
