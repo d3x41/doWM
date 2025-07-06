@@ -772,6 +772,42 @@ func (wm *WindowManager) Run() {
 							fmt.Println("excuted")
 						}
 						switch kb.Role {
+						case "resize-x-scale-up":
+							geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
+							if err != nil{
+								break
+							}
+							xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowWidth, []uint32{uint32(geom.Width+10)})
+							xproto.ConfigureWindowChecked(wm.conn, wm.windows[ev.Child].Client, xproto.ConfigWindowWidth, []uint32{uint32(geom.Width+10)})
+							focusWindow(wm.conn, ev.Child)
+						case "resize-x-scale-down":
+							geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
+							if err != nil{
+								break
+							}
+							if geom.Width>10{
+							xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowWidth, []uint32{uint32(geom.Width-10)})
+							xproto.ConfigureWindowChecked(wm.conn, wm.windows[ev.Child].Client, xproto.ConfigWindowWidth, []uint32{uint32(geom.Width-10)})
+							focusWindow(wm.conn, ev.Child)
+							}
+						case "resize-y-scale-up":
+							geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
+							if err != nil{
+								break
+							}
+							xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowHeight, []uint32{uint32(geom.Height+10)})
+							xproto.ConfigureWindowChecked(wm.conn, wm.windows[ev.Child].Client, xproto.ConfigWindowHeight, []uint32{uint32(geom.Height+10)})
+							focusWindow(wm.conn, ev.Child)
+						case "resize-y-scale-down":
+							geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
+							if err != nil{
+								break
+							}
+							if geom.Height>10{
+								xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowHeight, []uint32{uint32(geom.Height-10)})							
+									xproto.ConfigureWindowChecked(wm.conn, wm.windows[ev.Child].Client, xproto.ConfigWindowHeight, []uint32{uint32(geom.Height-10)})
+							focusWindow(wm.conn, ev.Child)
+							}
 						case "quit":
 							if _, ok := wm.currWorkspace.frametoclient[ev.Child]; ok {
 								// EMWH way of politely saying to destroy
