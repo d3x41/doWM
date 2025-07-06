@@ -464,7 +464,7 @@ keybinds:
   - key: "r"
     shift: true
     role: "reload-config"
-  - key: "l"
+  - key: "i"
     shift: false
     role: "next-layout"
   - key: "up"
@@ -473,3 +473,27 @@ keybinds:
   - key: "down"
     shift: false
     role: "decrease-gap"
+  - key: "h"
+    shift: false
+    role: "resize-x-scale-down"
+  - key: "j"
+    shift: false
+    role: "resize-y-scale-down"
+  - key: "k"
+    shift: false
+    role: "resize-y-scale-up"
+  - key: "l"
+    shift: false
+    role: "resize-x-scale-up"
+  - key: "h"
+    shift: true
+    role: "move-x-left"
+  - key: "j"
+    shift: true
+    role: "move-y-down"
+  - key: "k"
+    shift: true
+    role: "move-y-up"
+  - key: "l"
+    shift: true
+    role: "move-x-right"

@@ -805,9 +805,37 @@ func (wm *WindowManager) Run() {
 							}
 							if geom.Height>10{
 								xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowHeight, []uint32{uint32(geom.Height-10)})							
-									xproto.ConfigureWindowChecked(wm.conn, wm.windows[ev.Child].Client, xproto.ConfigWindowHeight, []uint32{uint32(geom.Height-10)})
+								xproto.ConfigureWindowChecked(wm.conn, wm.windows[ev.Child].Client, xproto.ConfigWindowHeight, []uint32{uint32(geom.Height-10)})
 							focusWindow(wm.conn, ev.Child)
 							}
+						case "move-x-right":
+							geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
+							if err != nil{
+								break
+							}
+							xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowX, []uint32{uint32(geom.X+10)})
+							focusWindow(wm.conn, ev.Child)
+						case "move-x-left":
+							geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
+							if err != nil{
+								break
+							}
+							xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowX, []uint32{uint32(geom.X-10)})
+							focusWindow(wm.conn, ev.Child)
+						case "move-y-up":
+							geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
+							if err != nil{
+								break
+							}
+							xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowY, []uint32{uint32(geom.Y-10)})
+							focusWindow(wm.conn, ev.Child)
+						case "move-y-down":
+							geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
+							if err != nil{
+								break
+							}
+							xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowY, []uint32{uint32(geom.Y+10)})
+							focusWindow(wm.conn, ev.Child)
 						case "quit":
 							if _, ok := wm.currWorkspace.frametoclient[ev.Child]; ok {
 								// EMWH way of politely saying to destroy
