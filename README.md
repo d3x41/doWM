@@ -52,6 +52,9 @@ cp -r ./exampleConfig/* ~/.config/doWM/
 chmod +x ~/.config/doWM/autostart.sh        
 ```
 
+> [!NOTE]
+> To logout, I suggest you use `killall -u $USER` that is what I have been doing for months
+
 ## Configuration
 doWM is configured with `~/.config/doWM/doWM.yml` and `~/.confiig/doWM/autostart.sh`
 simply put any autostart commands in autostart.sh, and then remember to chmod +x it.
