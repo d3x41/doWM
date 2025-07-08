@@ -53,7 +53,7 @@ chmod +x ~/.config/doWM/autostart.sh
 ```
 
 > [!NOTE]
-> To logout, I suggest you use `killall -u $USER` that is what I have been doing for months
+> To logout, I suggest you use `kill $(pgrep -o doWM)`
 
 ## Configuration
 doWM is configured with `~/.config/doWM/doWM.yml` and `~/.confiig/doWM/autostart.sh`
