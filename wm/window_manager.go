@@ -773,6 +773,7 @@ func (wm *WindowManager) Run() {
 						}
 						switch kb.Role {
 						case "resize-x-scale-up":
+							if wm.currWorkspace.tiling==true {break}
 							geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
 							if err != nil{
 								break
@@ -781,6 +782,7 @@ func (wm *WindowManager) Run() {
 							xproto.ConfigureWindowChecked(wm.conn, wm.windows[ev.Child].Client, xproto.ConfigWindowWidth, []uint32{uint32(geom.Width+10)})
 							focusWindow(wm.conn, ev.Child)
 						case "resize-x-scale-down":
+							if wm.currWorkspace.tiling==true {break}
 							geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
 							if err != nil{
 								break
@@ -791,6 +793,7 @@ func (wm *WindowManager) Run() {
 							focusWindow(wm.conn, ev.Child)
 							}
 						case "resize-y-scale-up":
+							if wm.currWorkspace.tiling==true {break}
 							geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
 							if err != nil{
 								break
@@ -799,6 +802,7 @@ func (wm *WindowManager) Run() {
 							xproto.ConfigureWindowChecked(wm.conn, wm.windows[ev.Child].Client, xproto.ConfigWindowHeight, []uint32{uint32(geom.Height+10)})
 							focusWindow(wm.conn, ev.Child)
 						case "resize-y-scale-down":
+							if wm.currWorkspace.tiling==true {break}
 							geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
 							if err != nil{
 								break
@@ -809,6 +813,7 @@ func (wm *WindowManager) Run() {
 							focusWindow(wm.conn, ev.Child)
 							}
 						case "move-x-right":
+							if wm.currWorkspace.tiling==true {break}
 							geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
 							if err != nil{
 								break
@@ -816,6 +821,7 @@ func (wm *WindowManager) Run() {
 							xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowX, []uint32{uint32(geom.X+10)})
 							focusWindow(wm.conn, ev.Child)
 						case "move-x-left":
+							if wm.currWorkspace.tiling==true {break}
 							geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
 							if err != nil{
 								break
@@ -823,6 +829,7 @@ func (wm *WindowManager) Run() {
 							xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowX, []uint32{uint32(geom.X-10)})
 							focusWindow(wm.conn, ev.Child)
 						case "move-y-up":
+							if wm.currWorkspace.tiling==true {break}
 							geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
 							if err != nil{
 								break
@@ -830,6 +837,7 @@ func (wm *WindowManager) Run() {
 							xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowY, []uint32{uint32(geom.Y-10)})
 							focusWindow(wm.conn, ev.Child)
 						case "move-y-down":
+							if wm.currWorkspace.tiling==true {break}
 							geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
 							if err != nil{
 								break
@@ -1024,11 +1032,15 @@ func (wm *WindowManager) Run() {
 			}
 			break
 		case xproto.ClientMessageEvent:
+			fmt.Println("client message")
 			ev := event.(xproto.ClientMessageEvent)
 			atomName, _ := xproto.GetAtomName(wm.conn, xproto.Atom(ev.Type)).Reply()
 			if atomName.Name == "_NET_CURRENT_DESKTOP" {
 				desktop := int(ev.Data.Data32[0]) // The workspace number the client wants
 				wm.switchWorkspace(desktop)
+			}
+			if atomName.Name == "_NET_WM_STATE_FULLSCREEN" {
+				wm.toggleFullScreen(ev.Window)
 			}
 			fmt.Println("Atom name is:", atomName.Name)
 			break
