@@ -130,7 +130,7 @@ each keybind either executes a command or plays a role in the wm. Here are all t
 - detach-tiling (sepearate a workspace from global tiling - e.g that workspace could be floating with rest tiling - it is also toggling, so if detached it will re-attach)
 - next-layout (switch to the next layout for the current window number)
 
-each keybind also has a key and a shift option, key is the character of the key (can also be things like "F1") and shift is a bool for if shift should be pressed or not to register.
+each keybind also has a key and a shift option, key is the character of the key (can also be things like "f1" "space" or "return") and shift is a bool for if shift should be pressed or not to register.
 
 for example: 
 ```yml
