@@ -39,6 +39,7 @@ type Config struct {
 	ModKey         string           `koanf:"mod-key"`
 	BorderWidth    uint32           `koanf:"border-width"`
 	Keybinds       []Keybind        `koanf:"keybinds"`
+	AutoFullscreen bool				`koanf:"auto-fullscreen"`
 }
 
 type Keybind struct {
@@ -238,6 +239,7 @@ func createConfig(f koanf.Provider) Config {
 		Keybinds:       []Keybind{},
 		Layouts:        createLayouts(),
 		StartTiling:    false,
+		AutoFullscreen: false,
 	}
 
 	// Load the config file
@@ -1031,19 +1033,60 @@ func (wm *WindowManager) Run() {
 				}
 			}
 			break
+
 		case xproto.ClientMessageEvent:
 			fmt.Println("client message")
 			ev := event.(xproto.ClientMessageEvent)
+
 			atomName, _ := xproto.GetAtomName(wm.conn, xproto.Atom(ev.Type)).Reply()
+			fmt.Println("ClientMessage atom:", atomName.Name)
+
 			if atomName.Name == "_NET_CURRENT_DESKTOP" {
-				desktop := int(ev.Data.Data32[0]) // The workspace number the client wants
+				desktop := int(ev.Data.Data32[0])
 				wm.switchWorkspace(desktop)
 			}
-			if atomName.Name == "_NET_WM_STATE_FULLSCREEN" {
-				wm.toggleFullScreen(ev.Window)
+
+			if atomName.Name == "_NET_WM_STATE"&& wm.config.AutoFullscreen {
+				fullscreenAtom, _ := wm.internAtom("_NET_WM_STATE_FULLSCREEN")
+				maxHorzAtom, _ := wm.internAtom("_NET_WM_STATE_MAXIMIZED_HORZ")
+				maxVertAtom, _ := wm.internAtom("_NET_WM_STATE_MAXIMIZED_VERT")
+				
+
+				action := ev.Data.Data32[0] // 0 = remove, 1 = add, 2 = toggle
+				prop1 := ev.Data.Data32[1]
+				prop2 := ev.Data.Data32[2]
+
+				if _, ok := wm.currWorkspace.clients[ev.Window]; !ok{
+					break
+				}
+
+				if prop1 == uint32(maxHorzAtom) || prop2 == uint32(maxHorzAtom) ||
+				prop1 == uint32(maxVertAtom) || prop2 == uint32(maxVertAtom) {
+					fmt.Println("maximized called, action", action)
+					switch action {
+						case 0: // remove
+						wm.disableFullscreen(wm.windows[wm.currWorkspace.clients[ev.Window]], wm.currWorkspace.clients[ev.Window])
+						case 1: // add
+						wm.fullscreen(wm.windows[wm.currWorkspace.clients[ev.Window]], wm.currWorkspace.clients[ev.Window])
+						case 2: // toggle
+						wm.toggleFullScreen(wm.currWorkspace.clients[ev.Window])
+					}
+					break
+				}
+				if prop1 == uint32(fullscreenAtom) || prop2 == uint32(fullscreenAtom) {
+					fmt.Println("Fullscreen request! Action:", action)
+
+					switch action {
+						case 0: // remove
+						wm.disableFullscreen(wm.windows[wm.currWorkspace.clients[ev.Window]], wm.currWorkspace.clients[ev.Window])
+						case 1: // add
+						wm.fullscreen(wm.windows[wm.currWorkspace.clients[ev.Window]], wm.currWorkspace.clients[ev.Window])
+						case 2: // toggle
+						wm.toggleFullScreen(wm.currWorkspace.clients[ev.Window])
+					}
+				}
 			}
-			fmt.Println("Atom name is:", atomName.Name)
-			break
+
 		default:
 			fmt.Println("event: " + event.String())
 			fmt.Println(event.Bytes())
@@ -1051,6 +1094,16 @@ func (wm *WindowManager) Run() {
 		}
 	}
 }
+
+
+func (wm *WindowManager) internAtom(name string) (xproto.Atom, error) {
+	reply, err := xproto.InternAtom(wm.conn, true, uint16(len(name)), name).Reply()
+	if err != nil {
+		return 0, err
+	}
+	return reply.Atom, nil
+}
+
 func (wm *WindowManager) declareSupportedAtoms() {
 	// List the names of EWMH atoms your WM supports
 	atomNames := []string{
@@ -1066,6 +1119,8 @@ func (wm *WindowManager) declareSupportedAtoms() {
 		"_NET_CLIENT_LIST",
 		"_NET_CLOSE_WINDOW",
 		"_NET_WM_MOVERESIZE",
+		"_NET_WM_STATE_MAXIMIZED_HORZ",
+		"_NET_WM_STATE_MAXIMIZED_VERT",
 	}
 
 	var atoms []xproto.Atom

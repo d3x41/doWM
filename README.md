@@ -66,6 +66,7 @@ You have a few general options:
 - outer-gap (gap from edge of tiling space to windows)
 - gaps (pixel gaps in tiling)
 - default-tiling (if true, tiling will be enabled on start)
+- auto-fullscreen (if true, windows will auto fullscreen when they request)
 - mod-key (which key should be used for all wm commands)
 - border-width (border width of windows)
 - unactive-border-color (the color for the border of unactive windows

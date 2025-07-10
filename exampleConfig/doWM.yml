@@ -13,6 +13,9 @@ mod-key: "Mod4"
 # if set to true, tiling will be enabled at the start instead of having to toggle tiling
 default-tiling: true
 
+# if set to true, if a window asks for fullscreen, the wm will auto fullscreen it instead of the user doing it manually
+auto-fullscreen: false
+
 border-width: 2
 
 # border color for unfocused windows
