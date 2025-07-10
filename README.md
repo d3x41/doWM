@@ -130,6 +130,14 @@ each keybind either executes a command or plays a role in the wm. Here are all t
 - decrease-gap (decrease gap between windows in tiling, also temporary)
 - detach-tiling (sepearate a workspace from global tiling - e.g that workspace could be floating with rest tiling - it is also toggling, so if detached it will re-attach)
 - next-layout (switch to the next layout for the current window number)
+- resize-x-scale-up (increases the width of the current window)
+- resize-x-scale-down (decreases the width of the current window)
+- resize-y-scale-up (increases the height of the current window)
+- resize-y-scale-down (decreases height of current window)
+- move-x-left (moves window to the left)
+- move-x-right (moves window to the right)
+- move-y-up (moves window up)
+- move-y-down (moves window down)
 
 each keybind also has a key and a shift option, key is the character of the key (can also be things like "f1" "space" or "return") and shift is a bool for if shift should be pressed or not to register.
 
