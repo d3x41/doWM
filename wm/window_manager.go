@@ -4,6 +4,14 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"log/slog"
+	"math"
+	"os"
+	"os/exec"
+	"os/user"
+	"path/filepath"
+	"strconv"
+
 	"github.com/BurntSushi/xgb"
 	"github.com/BurntSushi/xgb/xproto"
 	"github.com/BurntSushi/xgbutil"
@@ -12,13 +20,6 @@ import (
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 	"github.com/mattn/go-shellwords"
-	"log/slog"
-	"math"
-	"os"
-	"os/exec"
-	"os/user"
-	"path/filepath"
-	"strconv"
 )
 
 var (
@@ -647,6 +648,24 @@ func (wm *WindowManager) Run() {
 			}
 		case xproto.ButtonReleaseEvent:
 			// if we don't have the mouse down, we don't want to move or resize
+			if (wm.tiling){
+				ev := event.(xproto.ButtonReleaseEvent)
+				found := false
+				for _, window := range wm.currWorkspace.windowList{
+					geom, _ := xproto.GetGeometry(wm.conn, xproto.Drawable(window.id)).Reply()
+					fmt.Println("id", window.id, "mouse X:", ev.EventX, "mouse Y:", ev.EventY, "win X:" , geom.X, "win Y:", geom.Y, "win width", geom.Width, "win height", geom.Height ,"RELEASE")
+					if window.id != ev.Child&& ev.EventX < geom.X+int16(geom.Width) && ev.EventX > int16(geom.X)&&ev.EventY<geom.Y+int16(geom.Height)&&ev.EventY>int16(geom.Y){
+						fmt.Println("MOVING", ev.Child, window.id)
+						swapWindowsId(&wm.currWorkspace.windowList, ev.Child, window.id)
+						wm.fitToLayout()
+						found = true
+						break
+					}
+				}
+				if !found{
+					wm.fitToLayout()
+				}
+			}
 			start.Child = 0
 			xproto.AllowEvents(wm.conn, xproto.AllowReplayPointer, xproto.TimeCurrentTime)
 		case xproto.MotionNotifyEvent:
@@ -654,7 +673,7 @@ func (wm *WindowManager) Run() {
 			// if we have the mouse down and we are holding the mod key, and if we are not tiling and the window is not full screen then do some simple maths to move and resize
 			focusWindow(wm.conn, ev.Child)
 			if start.Child != 0 && ev.State&mMask != 0 {
-				if wm.currWorkspace.tiling || (wm.windows[start.Child] != nil && wm.windows[start.Child].Fullscreen) {
+				if (wm.windows[start.Child] != nil && wm.windows[start.Child].Fullscreen) {
 					break
 				}
 				xdiff := ev.RootX - start.RootX
@@ -666,6 +685,7 @@ func (wm *WindowManager) Run() {
 				fmt.Println("start detail")
 				fmt.Println(start.Detail)
 				if start.Detail == xproto.ButtonIndex3 {
+					if wm.currWorkspace.tiling { break }
 					Xoffset = attr.X
 					Yoffset = attr.Y
 					sizeX = uint16(max(10, int(int16(attr.Width)+xdiff)))
@@ -1170,6 +1190,16 @@ func swapWindows(arr *[]*Window, first int, last int) {
 	(*arr)[first], (*arr)[last] = (*arr)[last], (*arr)[first]
 }
 
+func swapWindowsId(arr *[]*Window, first xproto.Window, last xproto.Window){
+	var res1 int
+	var res2 int
+	for i, win := range (*arr){
+		if win.id == first{ res1 = i 
+		}else if win.id == last{ res2 =i }
+	}
+	swapWindows(arr, res1, res2)
+}
+
 func remove(arr *[]*Window, id xproto.Window) {
 	if len(*arr) == 1 {
 		*arr = []*Window{}
@@ -1314,6 +1344,7 @@ func (wm *WindowManager) fitToLayout() {
 		Height := (float64(wm.tilingspace.Height) * layoutWindow.HeightPercentage) - float64(wm.config.Gap*2)
 		fmt.Println("window:", WindowData.id, "X:", X, "Y:", Y, "Width:", Width, "Height:", Height)
 		wm.configureWindow(WindowData.id, X, Y, int(Width), int(Height))
+
 	}
 	if len(fullscreen) > 0 {
 		for _, win := range fullscreen {
