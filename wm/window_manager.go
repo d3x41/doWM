@@ -339,6 +339,7 @@ func (wm *WindowManager) createKeybind(kb *Keybind) Keybind {
 		Mask = Mask | xproto.ModMaskShift
 	}
 	err := xproto.GrabKeyChecked(wm.conn, true, wm.root, Mask, KeyCode, xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+	err = xproto.GrabKeyChecked(wm.conn, true, wm.root, Mask | xproto.ModMaskLock, KeyCode, xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
 	if err != nil {
 		slog.Error("couldn't create keybind", "error:", err)
 	}
