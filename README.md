@@ -21,6 +21,7 @@
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Screenshots](#screenshots)
+- [Star History](#star-history)
 - [Progress](#progress)
 - [Bugs](#bugs)
 
@@ -168,6 +169,10 @@ For an example config, look at [/exampleConfig](https://github.com/BobdaProgramm
 </div>  
 
 -------------
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=BobdaProgrammer/doWM&type=Timeline)](https://www.star-history.com/#BobdaProgrammer/doWM&Timeline)
 
 ## progress
 - [x] move/resize
