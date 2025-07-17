@@ -321,6 +321,65 @@ func fileExists(filename string) bool {
 	return !os.IsNotExist(err)
 }
 
+
+func getNumLockMask(conn *xgb.Conn) uint16 {
+	numLockSym := uint32(0xff7f) // XK_Num_Lock
+	numLockKeycode := getKeycodeForKeysym(conn, numLockSym)
+	if numLockKeycode == 0 {
+		slog.Info("Num Lock keycode not found")
+		return 0
+	}
+
+	fmt.Println("num lock keycode", numLockKeycode)
+
+	modMap, err := xproto.GetModifierMapping(conn).Reply()
+	if err != nil {
+		slog.Error("failed to get modifier mapping: %v","error: " ,err)
+	}
+
+	// Each modifier (Shift, Lock, Control, Mod1-Mod5) has modMap.KeycodesPerModifier keycodes
+	for modIndex := 0; modIndex < 8; modIndex++ {
+		for i := 0; i < int(modMap.KeycodesPerModifier); i++ {
+			index := modIndex*int(modMap.KeycodesPerModifier) + i
+			if modMap.Keycodes[index] == numLockKeycode {
+				return 1 << uint(modIndex)
+			}
+		}
+	}
+
+	return 0
+}
+
+
+func getKeycodeForKeysym(conn *xgb.Conn, keysym uint32) xproto.Keycode {
+	setup := xproto.Setup(conn)
+	firstKeycode := setup.MinKeycode
+	lastKeycode := setup.MaxKeycode
+
+	// Number of keycodes in range:
+	count := lastKeycode - firstKeycode + 1
+
+	keymap, err := xproto.GetKeyboardMapping(conn, firstKeycode, uint8(count)).Reply()
+	if err != nil {
+		slog.Error("failed to get keyboard mapping", "error:", err)
+		return 0
+	}
+
+	targetKeysym := xproto.Keysym(keysym)
+
+	for kc := firstKeycode; kc <= lastKeycode; kc++ {
+		offset := int(kc - firstKeycode) * int(keymap.KeysymsPerKeycode)
+		for i := 0; i < int(keymap.KeysymsPerKeycode); i++ {
+			if keymap.Keysyms[offset+i] == targetKeysym {
+				return kc
+			}
+		}
+	}
+	return 0
+}
+
+
+
 // gets keycode of key and sets it, then tells the X server to notify us when this keybind is pressed
 func (wm *WindowManager) createKeybind(kb *Keybind) Keybind {
 	code := keybind.StrToKeycodes(XUtil, kb.Key)
@@ -340,6 +399,11 @@ func (wm *WindowManager) createKeybind(kb *Keybind) Keybind {
 	}
 	err := xproto.GrabKeyChecked(wm.conn, true, wm.root, Mask, KeyCode, xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
 	err = xproto.GrabKeyChecked(wm.conn, true, wm.root, Mask | xproto.ModMaskLock, KeyCode, xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+	numlock := getNumLockMask(wm.conn)
+	if numlock!=wm.mod{
+		err = xproto.GrabKeyChecked(wm.conn, true, wm.root, Mask | numlock, KeyCode, xproto.GrabModeAsync, xproto.GrabModeAsync).Check()
+	}
+
 	if err != nil {
 		slog.Error("couldn't create keybind", "error:", err)
 	}
