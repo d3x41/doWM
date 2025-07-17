@@ -1066,19 +1066,23 @@ func (wm *WindowManager) Run() {
 							w := ev.Child
 							var client xproto.Window
 							var window Window
+							var shiftok bool=false
 							if kb.Shift {
-								client = wm.currWorkspace.frametoclient[w]
-								window = *wm.windows[w]
-								fmt.Println("moving window")
-								xproto.ConfigureWindow(
-									wm.conn,
-									w,
-									xproto.ConfigWindowStackMode,
-									[]uint32{xproto.StackModeAbove},
-								)
-								delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
-								remove(&wm.currWorkspace.windowList, w)
-								delete(wm.currWorkspace.frametoclient, w)
+								if _, ok := wm.currWorkspace.frametoclient[w]; ok{ 
+									shiftok = ok
+									client = wm.currWorkspace.frametoclient[w]
+									window = *wm.windows[w]
+									fmt.Println("moving window")
+									xproto.ConfigureWindow(
+										wm.conn,
+										w,
+										xproto.ConfigWindowStackMode,
+										[]uint32{xproto.StackModeAbove},
+									)
+									delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
+									remove(&wm.currWorkspace.windowList, w)
+									delete(wm.currWorkspace.frametoclient, w)
+								}
 							}
 							switch kb.Key {
 							case "1":
@@ -1102,7 +1106,7 @@ func (wm *WindowManager) Run() {
 							case "0":
 								wm.switchWorkspace(9)
 							}
-							if kb.Shift {
+							if kb.Shift && shiftok{
 								wm.currWorkspace.frametoclient[w] = client
 								wm.currWorkspace.windowList = append(wm.currWorkspace.windowList, &window)
 								wm.currWorkspace.clients[client] = w
