@@ -874,10 +874,9 @@ func (wm *WindowManager) Run() {
 						switch kb.Role {
 						case "resize-x-scale-up":
 							if wm.currWorkspace.tiling==true {
+								focusWindow(wm.conn, ev.Child)
 								if !wm.resizeTiledX(true, ev){
 									break
-								}else{
-									focusWindow(wm.conn, ev.Child)
 								}
 							}else{
 								geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
@@ -890,10 +889,9 @@ func (wm *WindowManager) Run() {
 							}
 						case "resize-x-scale-down":
 							if wm.currWorkspace.tiling==true {
+								focusWindow(wm.conn, ev.Child)
 								if !wm.resizeTiledX(false, ev){
 									break
-								}else{
-									focusWindow(wm.conn, ev.Child)
 								}
 							}else{
 								geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
@@ -908,10 +906,9 @@ func (wm *WindowManager) Run() {
 							}
 						case "resize-y-scale-up":
 							if wm.currWorkspace.tiling==true {
+								focusWindow(wm.conn, ev.Child)
 								if !wm.resizeTiledY(true, ev){
 									break
-								}else{
-									focusWindow(wm.conn, ev.Child)
 								}
 							}else{
 								geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
@@ -924,10 +921,9 @@ func (wm *WindowManager) Run() {
 							}
 						case "resize-y-scale-down":
 							if wm.currWorkspace.tiling==true {
+								focusWindow(wm.conn, ev.Child)
 								if !wm.resizeTiledY(false, ev){
 									break
-								}else{
-									focusWindow(wm.conn, ev.Child)
 								}
 							}else{
 								if wm.currWorkspace.tiling==true {break}
