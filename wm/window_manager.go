@@ -876,6 +876,8 @@ func (wm *WindowManager) Run() {
 							if wm.currWorkspace.tiling==true {
 								if !wm.resizeTiledX(true, ev){
 									break
+								}else{
+									focusWindow(wm.conn, ev.Child)
 								}
 							}else{
 								geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
@@ -890,6 +892,8 @@ func (wm *WindowManager) Run() {
 							if wm.currWorkspace.tiling==true {
 								if !wm.resizeTiledX(false, ev){
 									break
+								}else{
+									focusWindow(wm.conn, ev.Child)
 								}
 							}else{
 								geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
@@ -906,6 +910,8 @@ func (wm *WindowManager) Run() {
 							if wm.currWorkspace.tiling==true {
 								if !wm.resizeTiledY(true, ev){
 									break
+								}else{
+									focusWindow(wm.conn, ev.Child)
 								}
 							}else{
 								geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
@@ -920,6 +926,8 @@ func (wm *WindowManager) Run() {
 							if wm.currWorkspace.tiling==true {
 								if !wm.resizeTiledY(false, ev){
 									break
+								}else{
+									focusWindow(wm.conn, ev.Child)
 								}
 							}else{
 								if wm.currWorkspace.tiling==true {break}
