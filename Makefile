@@ -3,8 +3,8 @@ BINDIR := $(PREFIX)/bin
 XSESSIONS := /usr/share/xsessions
 USER_CONFIG := $(HOME)/.config/doWM
 
-all:
-	go build -o doWM main.go
+build:
+	go build -o doWM
 	@echo "Built successfully!"
 
 install:
@@ -14,7 +14,7 @@ install:
 
 	# Install .desktop session file
 	mkdir -p $(XSESSIONS)
-	sudo install -m644 ./install/doWM.desktop $(XSESSIONS)/doWM.desktop
+	sudo install -m644 doWM.desktop $(XSESSIONS)/doWM.desktop
 
 
 	@echo "Installed successfully!"

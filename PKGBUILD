@@ -1,5 +1,5 @@
-pkgname=dowm
-pkgver=1.0.0
+# Maintainer: Sam Inglis <https://github.com/BobdaProgrammer>
+pkgname=doWM
 pkgrel=1
 pkgdesc="A beautiful tiling and floating x11 window manager"
 arch=('x86_64')
@@ -7,20 +7,21 @@ url="https://github.com/BobdaProgrammer/doWM"
 license=('MIT')
 depends=('xorg-server')
 makedepends=('go')
-source=("$pkgname::git+file://$PWD")
-md5sums=('SKIP')
-
+source=("doWM.desktop")
 build() {
-  cd "$srcdir/$pkgname"
-  go build -o doWM main.go
+    cd "$srcdir"
+    cd ..
+    go build -o doWM
 }
 
 package() {
-  cd "$srcdir/$pkgname"
-
   # Install binary
-  install -Dm755 doWM "$pkgdir/usr/bin/doWM"
+  sudo install -Dm755 "../doWM" "/usr/local/bin/doWM"
 
-  # Install session .desktop file
-  install -Dm644 install/doWM.desktop "$pkgdir/usr/share/xsessions/doWM.desktop"
+  # Install .desktop session file
+  sudo install -Dm644 "doWM.desktop" "/usr/share/xsessions/doWM.desktop"
 }
+
+# Optional: you can add sha256sums=('SKIP') for local testing
+sha256sums=('SKIP')
+
