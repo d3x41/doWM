@@ -33,6 +33,7 @@ type Config struct {
 	// tiling window gaps, unfocused/focused window border colors, mod key for all wm actions, window border width, keybinds
 	Layouts        map[int][]Layout `koanf:"layouts"`
 	Gap            uint32           `koanf:"gaps"`
+	Resize            uint32           `koanf:"resize-amount"`
 	OuterGap       uint32           `koanf:"outer-gap"`
 	StartTiling    bool             `koanf:"default-tiling"`
 	BorderUnactive uint32           `koanf:"unactive-border-color"`
@@ -881,8 +882,8 @@ func (wm *WindowManager) Run() {
 								if err != nil{
 									break
 								}
-								xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowWidth, []uint32{uint32(geom.Width+10)})
-								xproto.ConfigureWindowChecked(wm.conn, wm.windows[ev.Child].Client, xproto.ConfigWindowWidth, []uint32{uint32(geom.Width+10)})
+								xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowWidth, []uint32{uint32(geom.Width+uint16(wm.config.Resize))})
+								xproto.ConfigureWindowChecked(wm.conn, wm.windows[ev.Child].Client, xproto.ConfigWindowWidth, []uint32{uint32(geom.Width+uint16(wm.config.Resize))})
 								focusWindow(wm.conn, ev.Child)
 							}
 						case "resize-x-scale-down":
@@ -896,8 +897,8 @@ func (wm *WindowManager) Run() {
 									break
 								}
 								if geom.Width>10{
-									xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowWidth, []uint32{uint32(geom.Width-10)})
-									xproto.ConfigureWindowChecked(wm.conn, wm.windows[ev.Child].Client, xproto.ConfigWindowWidth, []uint32{uint32(geom.Width-10)})
+									xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowWidth, []uint32{uint32(geom.Width-uint16(wm.config.Resize))})
+									xproto.ConfigureWindowChecked(wm.conn, wm.windows[ev.Child].Client, xproto.ConfigWindowWidth, []uint32{uint32(geom.Width-uint16(wm.config.Resize))})
 									focusWindow(wm.conn, ev.Child)
 								}
 							}
@@ -911,8 +912,8 @@ func (wm *WindowManager) Run() {
 								if err != nil{
 									break
 								}
-								xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowHeight, []uint32{uint32(geom.Height+10)})
-								xproto.ConfigureWindowChecked(wm.conn, wm.windows[ev.Child].Client, xproto.ConfigWindowHeight, []uint32{uint32(geom.Height+10)})
+								xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowHeight, []uint32{uint32(geom.Height+uint16(wm.config.Resize))})
+								xproto.ConfigureWindowChecked(wm.conn, wm.windows[ev.Child].Client, xproto.ConfigWindowHeight, []uint32{uint32(geom.Height+uint16(wm.config.Resize))})
 								focusWindow(wm.conn, ev.Child)
 							}
 						case "resize-y-scale-down":
@@ -927,8 +928,8 @@ func (wm *WindowManager) Run() {
 									break
 								}
 								if geom.Height>10{
-									xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowHeight, []uint32{uint32(geom.Height-10)})							
-									xproto.ConfigureWindowChecked(wm.conn, wm.windows[ev.Child].Client, xproto.ConfigWindowHeight, []uint32{uint32(geom.Height-10)})
+									xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowHeight, []uint32{uint32(geom.Height-uint16(wm.config.Resize))})							
+									xproto.ConfigureWindowChecked(wm.conn, wm.windows[ev.Child].Client, xproto.ConfigWindowHeight, []uint32{uint32(geom.Height-uint16(wm.config.Resize))})
 									focusWindow(wm.conn, ev.Child)
 								}
 							}
@@ -1242,22 +1243,22 @@ func (wm *WindowManager) resizeTiledX(increase bool, ev xproto.KeyPressEvent) bo
 		// if diff between ends of windows it less than five, they are same column
 		if math.Abs( float64( (X+W)-(winX+winW) ) ) <= 10{
 			if increase{
-				winW+=2
+				winW+=uint16(wm.config.Resize)
 			}else{
-				winW-=2
+				winW-=uint16(wm.config.Resize)
 			}
 			fmt.Println(winW)		
 		}else if math.Abs( float64( int(winX)-(int(X)+int(W)) ) ) <= 10 {
 			if increase{
-				winX+=2
-				winW-=2
+				winX+=uint16(wm.config.Resize)
+				winW-=uint16(wm.config.Resize)
 				if winW < 50{
 					ok = false
 					break
 				}
 			}else{
-				winX -= 2 
-				winW += 2
+				winX -= uint16(wm.config.Resize)
+				winW += uint16(wm.config.Resize)
 			}
 		}
 		
@@ -1304,22 +1305,23 @@ func (wm *WindowManager) resizeTiledY(increase bool, ev xproto.KeyPressEvent) bo
 		// if diff between ends of windows it less than five, they are same column
 		if math.Abs( float64( (int(Y)+int(H))-(int(winY)+int(winH)) ) ) <= 10{
 			if increase{
-				winH+=2
+				winH+=uint16(wm.config.Resize)
 			}else{
-				winH-=2
+				winH-=uint16(wm.config.Resize)
 			}
 			fmt.Println(winW)		
 		}else if math.Abs( float64( int(winY)-(int(Y)+int(H)) ) ) <= 10 {
 			if increase{
-				winY+=2
-				winH-=2
+				winY+=uint16(wm.config.Resize)
+				winH-=uint16(wm.config.Resize)
 				if winH < 50{
 					ok = false
 					break
 				}
 			}else{
-				winY -= 2 
-				winH += 2
+				winY -= uint16(wm.config.Resize)
+				winH += uint16(wm.config.Resize)
+
 			}
 		}
 		

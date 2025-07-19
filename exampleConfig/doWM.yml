@@ -1,6 +1,9 @@
 # gap from edge of tiling space to windows
 outer-gap: 0
 
+# the amount the window will be resized with the keybinds
+resize-amount: 5
+
 # gaps for tiling windows
 gaps: 10
 
