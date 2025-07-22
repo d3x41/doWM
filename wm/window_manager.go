@@ -874,7 +874,7 @@ func (wm *WindowManager) Run() {
 						switch kb.Role {
 						case "resize-x-scale-up":
 							if wm.currWorkspace.tiling==true {
-								focusWindow(wm.conn, ev.Child)
+								wm.pointerToWindow(ev.Child)
 								if !wm.resizeTiledX(true, ev){
 									break
 								}
@@ -885,11 +885,11 @@ func (wm *WindowManager) Run() {
 								}
 								xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowWidth, []uint32{uint32(geom.Width+uint16(wm.config.Resize))})
 								xproto.ConfigureWindowChecked(wm.conn, wm.windows[ev.Child].Client, xproto.ConfigWindowWidth, []uint32{uint32(geom.Width+uint16(wm.config.Resize))})
-								focusWindow(wm.conn, ev.Child)
+								wm.pointerToWindow(ev.Child)
 							}
 						case "resize-x-scale-down":
 							if wm.currWorkspace.tiling==true {
-								focusWindow(wm.conn, ev.Child)
+								wm.pointerToWindow(ev.Child)
 								if !wm.resizeTiledX(false, ev){
 									break
 								}
@@ -901,12 +901,12 @@ func (wm *WindowManager) Run() {
 								if geom.Width>10{
 									xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowWidth, []uint32{uint32(geom.Width-uint16(wm.config.Resize))})
 									xproto.ConfigureWindowChecked(wm.conn, wm.windows[ev.Child].Client, xproto.ConfigWindowWidth, []uint32{uint32(geom.Width-uint16(wm.config.Resize))})
-									focusWindow(wm.conn, ev.Child)
+									wm.pointerToWindow(ev.Child)
 								}
 							}
 						case "resize-y-scale-up":
 							if wm.currWorkspace.tiling==true {
-								focusWindow(wm.conn, ev.Child)
+								wm.pointerToWindow(ev.Child)
 								if !wm.resizeTiledY(true, ev){
 									break
 								}
@@ -917,11 +917,11 @@ func (wm *WindowManager) Run() {
 								}
 								xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowHeight, []uint32{uint32(geom.Height+uint16(wm.config.Resize))})
 								xproto.ConfigureWindowChecked(wm.conn, wm.windows[ev.Child].Client, xproto.ConfigWindowHeight, []uint32{uint32(geom.Height+uint16(wm.config.Resize))})
-								focusWindow(wm.conn, ev.Child)
+								wm.pointerToWindow(ev.Child)
 							}
 						case "resize-y-scale-down":
 							if wm.currWorkspace.tiling==true {
-								focusWindow(wm.conn, ev.Child)
+								wm.pointerToWindow(ev.Child)
 								if !wm.resizeTiledY(false, ev){
 									break
 								}
@@ -934,7 +934,7 @@ func (wm *WindowManager) Run() {
 								if geom.Height>10{
 									xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowHeight, []uint32{uint32(geom.Height-uint16(wm.config.Resize))})							
 									xproto.ConfigureWindowChecked(wm.conn, wm.windows[ev.Child].Client, xproto.ConfigWindowHeight, []uint32{uint32(geom.Height-uint16(wm.config.Resize))})
-									focusWindow(wm.conn, ev.Child)
+									wm.pointerToWindow(ev.Child)
 								}
 							}
 						case "move-x-right":
@@ -944,7 +944,7 @@ func (wm *WindowManager) Run() {
 								break
 							}
 							xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowX, []uint32{uint32(geom.X+10)})
-							focusWindow(wm.conn, ev.Child)
+							wm.pointerToWindow(ev.Child)
 						case "move-x-left":
 							if wm.currWorkspace.tiling==true {break}
 							geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
@@ -952,7 +952,7 @@ func (wm *WindowManager) Run() {
 								break
 							}
 							xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowX, []uint32{uint32(geom.X-10)})
-							focusWindow(wm.conn, ev.Child)
+							wm.pointerToWindow(ev.Child)
 						case "move-y-up":
 							if wm.currWorkspace.tiling==true {break}
 							geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
@@ -960,7 +960,7 @@ func (wm *WindowManager) Run() {
 								break
 							}
 							xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowY, []uint32{uint32(geom.Y-10)})
-							focusWindow(wm.conn, ev.Child)
+							wm.pointerToWindow(ev.Child)
 						case "move-y-down":
 							if wm.currWorkspace.tiling==true {break}
 							geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(ev.Child)).Reply()
@@ -968,7 +968,7 @@ func (wm *WindowManager) Run() {
 								break
 							}
 							xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowY, []uint32{uint32(geom.Y+10)})
-							focusWindow(wm.conn, ev.Child)
+							wm.pointerToWindow(ev.Child)
 						case "quit":
 							if _, ok := wm.currWorkspace.frametoclient[ev.Child]; ok {
 								// EMWH way of politely saying to destroy
