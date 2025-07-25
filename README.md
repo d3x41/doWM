@@ -18,9 +18,9 @@
 
 ## Contents
 - [Description](#description)
+- [Screenshots](#screenshots)
 - [Installation](#installation)
 - [Configuration](#configuration)
-- [Screenshots](#screenshots)
 - [Star History](#star-history)
 - [Progress](#progress)
 - [Bugs](#bugs)
