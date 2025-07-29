@@ -18,15 +18,30 @@
 
 ## Contents
 - [Description](#description)
+- [Screenshots](#screenshots)
 - [Installation](#installation)
 - [Configuration](#configuration)
-- [Screenshots](#screenshots)
 - [Star History](#star-history)
 - [Progress](#progress)
 - [Bugs](#bugs)
 
 ## Description
 doWM is a beautiful floating and tiling window manager for X11 completely written in golang.
+
+## screenshots
+<div align="center">
+<img src="https://github.com/BobdaProgrammer/doWM/blob/main/images/gruvbox.png?raw=true" width="500px">
+<img src="https://github.com/BobdaProgrammer/doWM/blob/main/images/pinkgradient.png?raw=true" width="500px">
+  
+<img src="https://github.com/BobdaProgrammer/doWM/blob/main/images/8windowsweirdlayout.png?raw=true" width="500px">
+<img src="https://github.com/BobdaProgrammer/doWM/blob/main/images/fabricnotification.png?raw=true" width="500px">
+
+<img src="https://github.com/BobdaProgrammer/doWM/blob/main/images/musicwithnotification.png?raw=true" width="500px">
+<img src="https://github.com/BobdaProgrammer/doWM/blob/main/images/workspaceviewergruvbox.png?raw=true" width="500px">
+</div>  
+
+-------------
+
 
 ## Installation
 Currently the best way is to build from source:
@@ -155,20 +170,6 @@ for example:
 ```
 
 For an example config, look at [/exampleConfig](https://github.com/BobdaProgrammer/doWM/tree/main/exampleConfig)
-
-## screenshots
-<div align="center">
-<img src="https://github.com/BobdaProgrammer/doWM/blob/main/images/gruvbox.png?raw=true" width="500px">
-<img src="https://github.com/BobdaProgrammer/doWM/blob/main/images/pinkgradient.png?raw=true" width="500px">
-  
-<img src="https://github.com/BobdaProgrammer/doWM/blob/main/images/8windowsweirdlayout.png?raw=true" width="500px">
-<img src="https://github.com/BobdaProgrammer/doWM/blob/main/images/fabricnotification.png?raw=true" width="500px">
-
-<img src="https://github.com/BobdaProgrammer/doWM/blob/main/images/musicwithnotification.png?raw=true" width="500px">
-<img src="https://github.com/BobdaProgrammer/doWM/blob/main/images/workspaceviewergruvbox.png?raw=true" width="500px">
-</div>  
-
--------------
 
 ## Star History
 
