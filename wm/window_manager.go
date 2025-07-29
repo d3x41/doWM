@@ -91,8 +91,6 @@ type Space struct {
 
 // a map from client windows to the frame, the reverse of that, window IDs to windows, and if that workspace is tiling or not (incase it needs to update to sync with the main wm)
 type Workspace struct {
-	clients       map[xproto.Window]xproto.Window
-	frametoclient map[xproto.Window]xproto.Window
 	tiling        bool
 	layoutIndex   int
 	detachTiling  bool
@@ -265,7 +263,6 @@ func createConfig(f koanf.Provider) Config {
 	}
 
 	fmt.Println(cfg.Layouts)
-
 	return cfg
 }
 
@@ -302,8 +299,6 @@ func Create() (*WindowManager, error) {
 	workspaces := make([]Workspace, 10)
 	for i := range workspaces {
 		workspaces[i] = Workspace{
-			clients:       map[xproto.Window]xproto.Window{},
-			frametoclient: map[xproto.Window]xproto.Window{},
 			windowList:    []*Window{},
 			tiling:        false,
 			detachTiling:  false,
@@ -342,8 +337,6 @@ func getNumLockMask(conn *xgb.Conn) uint16 {
 		slog.Info("Num Lock keycode not found")
 		return 0
 	}
-
-	fmt.Println("num lock keycode", numLockKeycode)
 
 	modMap, err := xproto.GetModifierMapping(conn).Reply()
 	if err != nil {
@@ -703,7 +696,7 @@ func (wm *WindowManager) Run() {
 		if event == nil {
 			continue
 		}
-		if len(wm.currWorkspace.frametoclient) == 0 {
+		if len(wm.currWorkspace.windowList) == 0 {
 			xproto.SetInputFocusChecked(wm.conn, xproto.InputFocusPointerRoot, wm.root, xproto.TimeCurrentTime).Check()
 		}
 		switch event.(type) {
@@ -778,19 +771,7 @@ func (wm *WindowManager) Run() {
 					[]uint32{uint32(Xoffset), uint32(Yoffset), uint32(sizeX), uint32(sizeY)},
 				)
 
-				// the if statement is basically checking if we are resizing, by saying that if the size that we are setting is different to the current size we have to be resizing, therefore we also need to resize the child/client window
-				if sizeX != attr.Width || sizeY != attr.Height {
-					client := wm.currWorkspace.frametoclient[start.Child]
-					xproto.ConfigureWindow(
-						wm.conn,
-						client,
-						xproto.ConfigWindowWidth|xproto.ConfigWindowHeight,
-						[]uint32{
-							uint32(sizeX),
-							uint32(sizeY),
-						},
-					)
-				}
+
 			}
 		case xproto.CreateNotifyEvent:
 			fmt.Println("create notify")
@@ -823,22 +804,18 @@ func (wm *WindowManager) Run() {
 			fmt.Println("Event:")
 			fmt.Println(ev.Event)
 			// if the destroy notify has come through but we haven't registered any kind of deletion then handle it
-			if _, ok := wm.currWorkspace.clients[ev.Window]; ok {
-				wm.UnFrame(wm.currWorkspace.clients[ev.Window], true)
-				delete(wm.windows, wm.currWorkspace.clients[ev.Window])
-				delete(wm.currWorkspace.frametoclient, wm.currWorkspace.clients[ev.Window])
-				remove(&wm.currWorkspace.windowList, wm.currWorkspace.clients[ev.Window])
-				delete(wm.currWorkspace.clients, ev.Window)
+			if _, ok := wm.windows[ev.Window]; ok {
+				wm.UnFrame(wm.windows[ev.Window].id, true)
+				delete(wm.windows, ev.Window)
+				remove(&wm.currWorkspace.windowList, ev.Window)
 				fmt.Println("removed window from records")
 				fmt.Println("fitting to layout...")
 				wm.fitToLayout()
 			}
-			if _, ok := wm.currWorkspace.frametoclient[ev.Window]; ok {
-				wm.UnFrame(wm.currWorkspace.frametoclient[ev.Window], true)
-				delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[ev.Window])
+			if _, ok := wm.windows[ev.Window]; ok {
+				wm.UnFrame(wm.windows[ev.Window].id, true)
 				delete(wm.windows, ev.Window)
 				remove(&wm.currWorkspace.windowList, ev.Window)
-				delete(wm.currWorkspace.frametoclient, ev.Window)
 				wm.fitToLayout()
 			}
 			fmt.Println("finished destroying")
@@ -884,7 +861,6 @@ func (wm *WindowManager) Run() {
 									break
 								}
 								xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowWidth, []uint32{uint32(geom.Width+uint16(wm.config.Resize))})
-								xproto.ConfigureWindowChecked(wm.conn, wm.windows[ev.Child].Client, xproto.ConfigWindowWidth, []uint32{uint32(geom.Width+uint16(wm.config.Resize))})
 								wm.pointerToWindow(ev.Child)
 							}
 						case "resize-x-scale-down":
@@ -900,7 +876,6 @@ func (wm *WindowManager) Run() {
 								}
 								if geom.Width>10{
 									xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowWidth, []uint32{uint32(geom.Width-uint16(wm.config.Resize))})
-									xproto.ConfigureWindowChecked(wm.conn, wm.windows[ev.Child].Client, xproto.ConfigWindowWidth, []uint32{uint32(geom.Width-uint16(wm.config.Resize))})
 									wm.pointerToWindow(ev.Child)
 								}
 							}
@@ -916,7 +891,6 @@ func (wm *WindowManager) Run() {
 									break
 								}
 								xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowHeight, []uint32{uint32(geom.Height+uint16(wm.config.Resize))})
-								xproto.ConfigureWindowChecked(wm.conn, wm.windows[ev.Child].Client, xproto.ConfigWindowHeight, []uint32{uint32(geom.Height+uint16(wm.config.Resize))})
 								wm.pointerToWindow(ev.Child)
 							}
 						case "resize-y-scale-down":
@@ -933,7 +907,6 @@ func (wm *WindowManager) Run() {
 								}
 								if geom.Height>10{
 									xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowHeight, []uint32{uint32(geom.Height-uint16(wm.config.Resize))})							
-									xproto.ConfigureWindowChecked(wm.conn, wm.windows[ev.Child].Client, xproto.ConfigWindowHeight, []uint32{uint32(geom.Height-uint16(wm.config.Resize))})
 									wm.pointerToWindow(ev.Child)
 								}
 							}
@@ -970,15 +943,15 @@ func (wm *WindowManager) Run() {
 							xproto.ConfigureWindowChecked(wm.conn, ev.Child, xproto.ConfigWindowY, []uint32{uint32(geom.Y+10)})
 							wm.pointerToWindow(ev.Child)
 						case "quit":
-							if _, ok := wm.currWorkspace.frametoclient[ev.Child]; ok {
+							if _, ok := wm.windows[ev.Child]; ok {
 								// EMWH way of politely saying to destroy
-								wm.SendWmDelete(wm.conn, wm.currWorkspace.frametoclient[ev.Child])
-								fmt.Println("closing window:", wm.currWorkspace.frametoclient[ev.Child], "frame:", ev.Child)
+								wm.SendWmDelete(wm.conn, wm.windows[ev.Child].id)
+								fmt.Println("closing window:", wm.windows[ev.Child].id, "frame:", ev.Child)
 							}
 							break
 						case "force-quit":
 							// force close
-							err := xproto.DestroyWindowChecked(wm.conn, wm.currWorkspace.frametoclient[ev.Child]).Check()
+							err := xproto.DestroyWindowChecked(wm.conn, wm.windows[ev.Child].id).Check()
 							if err != nil {
 								fmt.Println("Couldn't force destroy:", err)
 							}
@@ -1077,7 +1050,7 @@ func (wm *WindowManager) Run() {
 							mMask = wm.mod
 
 						case "next-layout":
-							windowNum := len(wm.currWorkspace.frametoclient)
+							windowNum := len(wm.currWorkspace.windowList)
 							if windowNum < 1 {
 								break
 							}
@@ -1104,13 +1077,11 @@ func (wm *WindowManager) Run() {
 						case "0", "1", "2", "3", "4", "5", "6", "7", "8", "9":
 							// if shift is pressed we want to move the window to the next workspace, so delete it from the record of the current workspace so when they unmap all the other windows (giving the illusion of changing workspace) this one stays then afterwards reparent it to the workspace that has been changed to
 							w := ev.Child
-							var client xproto.Window
 							var window Window
 							var shiftok bool=false
 							if kb.Shift {
-								if _, ok := wm.currWorkspace.frametoclient[w]; ok{ 
+								if _, ok := wm.windows[w]; ok{ 
 									shiftok = ok
-									client = wm.currWorkspace.frametoclient[w]
 									window = *wm.windows[w]
 									fmt.Println("moving window")
 									xproto.ConfigureWindow(
@@ -1119,9 +1090,7 @@ func (wm *WindowManager) Run() {
 										xproto.ConfigWindowStackMode,
 										[]uint32{xproto.StackModeAbove},
 									)
-									delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[w])
 									remove(&wm.currWorkspace.windowList, w)
-									delete(wm.currWorkspace.frametoclient, w)
 								}
 							}
 							switch kb.Key {
@@ -1147,11 +1116,8 @@ func (wm *WindowManager) Run() {
 								wm.switchWorkspace(9)
 							}
 							if kb.Shift && shiftok{
-								wm.currWorkspace.frametoclient[w] = client
 								wm.currWorkspace.windowList = append(wm.currWorkspace.windowList, &window)
-								wm.currWorkspace.clients[client] = w
-								wm.setWindowDesktop(client, uint32(wm.workspaceIndex))
-								wm.setWindowDesktop(wm.currWorkspace.clients[client], uint32(wm.workspaceIndex))
+								wm.setWindowDesktop(w, uint32(wm.workspaceIndex))
 							}
 							wm.fitToLayout()
 
@@ -1185,7 +1151,7 @@ func (wm *WindowManager) Run() {
 				prop1 := ev.Data.Data32[1]
 				prop2 := ev.Data.Data32[2]
 
-				if _, ok := wm.currWorkspace.clients[ev.Window]; !ok{
+				if _, ok := wm.windows[ev.Window]; !ok{
 					break
 				}
 
@@ -1194,11 +1160,11 @@ func (wm *WindowManager) Run() {
 					fmt.Println("maximized called, action", action)
 					switch action {
 						case 0: // remove
-						wm.disableFullscreen(wm.windows[wm.currWorkspace.clients[ev.Window]], wm.currWorkspace.clients[ev.Window])
+						wm.disableFullscreen(wm.windows[ev.Window], ev.Window)
 						case 1: // add
-						wm.fullscreen(wm.windows[wm.currWorkspace.clients[ev.Window]], wm.currWorkspace.clients[ev.Window])
+						wm.fullscreen(wm.windows[ev.Window], ev.Window)
 						case 2: // toggle
-						wm.toggleFullScreen(wm.currWorkspace.clients[ev.Window])
+						wm.toggleFullScreen(ev.Window)
 					}
 					break
 				}
@@ -1207,11 +1173,11 @@ func (wm *WindowManager) Run() {
 
 					switch action {
 						case 0: // remove
-						wm.disableFullscreen(wm.windows[wm.currWorkspace.clients[ev.Window]], wm.currWorkspace.clients[ev.Window])
+						wm.disableFullscreen(wm.windows[ev.Window], ev.Window)
 						case 1: // add
-						wm.fullscreen(wm.windows[wm.currWorkspace.clients[ev.Window]], wm.currWorkspace.clients[ev.Window])
+						wm.fullscreen(wm.windows[ev.Window], ev.Window)
 						case 2: // toggle
-						wm.toggleFullScreen(wm.currWorkspace.clients[ev.Window])
+						wm.toggleFullScreen(ev.Window)
 					}
 				}
 			}
@@ -1540,7 +1506,7 @@ func (wm *WindowManager) fitToLayout() {
 	}
 	// if there are more than 4 windows then just don't do it
 
-	windowNum := len(wm.currWorkspace.frametoclient)
+	windowNum := len(wm.currWorkspace.windowList)
 
 	if _, ok := wm.config.Layouts[windowNum]; !ok {
 		return
@@ -1602,26 +1568,10 @@ func (wm *WindowManager) fitToLayout() {
 
 func (wm *WindowManager) configureWindow(Frame xproto.Window, X, Y, Width, Height int) {
 	// configure the window to how it wants to be
-	err := xproto.ConfigureWindowChecked(wm.conn, Frame, xproto.ConfigWindowX|xproto.ConfigWindowY|xproto.ConfigWindowWidth|xproto.ConfigWindowHeight, []uint32{
+	_ = xproto.ConfigureWindowChecked(wm.conn, Frame, xproto.ConfigWindowX|xproto.ConfigWindowY|xproto.ConfigWindowWidth|xproto.ConfigWindowHeight, []uint32{
 		uint32(X), uint32(Y), uint32(Width), uint32(Height),
 	}).Check()
-	if err != nil {
-		slog.Error("couldn't configure window!", "error:", err)
-		return
-	}
 
-	// get the client from the frame and then resize the client too
-	tree, _ := xproto.QueryTree(wm.conn, Frame).Reply()
-	if len(tree.Children) > 0 {
-		child := tree.Children[0]
-		err = xproto.ConfigureWindowChecked(wm.conn, child, xproto.ConfigWindowX|xproto.ConfigWindowY|xproto.ConfigWindowWidth|xproto.ConfigWindowHeight, []uint32{
-			0, 0, uint32(Width), uint32(Height),
-		}).Check()
-		if err != nil {
-			slog.Error("couldn't configure window!", "error:", err)
-			return
-		}
-	}
 }
 
 func (wm *WindowManager) toggleTiling() {
@@ -1704,13 +1654,6 @@ func (wm *WindowManager) disableFullscreen(win *Window, Child xproto.Window) {
 			xproto.ConfigWindowWidth|xproto.ConfigWindowHeight|xproto.ConfigWindowBorderWidth,
 		[]uint32{uint32(win.X), uint32(win.Y), uint32(win.Width), uint32(win.Height), wm.config.BorderWidth},
 	).Check()
-	err = xproto.ConfigureWindowChecked(
-		wm.conn,
-		wm.currWorkspace.frametoclient[Child],
-		xproto.ConfigWindowX|xproto.ConfigWindowY|
-			xproto.ConfigWindowWidth|xproto.ConfigWindowHeight,
-		[]uint32{0, 0, uint32(win.Width), uint32(win.Height)},
-	).Check()
 	if err != nil {
 		slog.Error("couldn't un fullscreen window", "error: ", err)
 	}
@@ -1739,13 +1682,6 @@ func (wm *WindowManager) fullscreen(win *Window, Child xproto.Window) {
 			xproto.ConfigWindowWidth|xproto.ConfigWindowHeight|xproto.ConfigWindowBorderWidth,
 		[]uint32{0, 0, uint32(wm.width), uint32(wm.height), 0},
 	).Check()
-	err = xproto.ConfigureWindowChecked(
-		wm.conn,
-		wm.currWorkspace.frametoclient[Child],
-		xproto.ConfigWindowX|xproto.ConfigWindowY|
-			xproto.ConfigWindowWidth|xproto.ConfigWindowHeight,
-		[]uint32{0, 0, uint32(wm.width), uint32(wm.height)},
-	).Check()
 	if err != nil {
 		slog.Error("couldn't fullscreen window", "error:", err)
 	}
@@ -1756,7 +1692,7 @@ func (wm *WindowManager) broadcastWorkspaceCount() {
 	count := wm.workspaceIndex + 1
 	otherCount := 0
 	for i, workspace := range wm.workspaces {
-		if len(workspace.frametoclient) > 0 {
+		if len(workspace.windowList) > 0 {
 			otherCount = i
 		}
 	}
@@ -1829,8 +1765,8 @@ func (wm *WindowManager) switchWorkspace(workspace int) {
 	}
 
 	// unmap all windows in current workspace
-	for frame := range wm.currWorkspace.frametoclient {
-		xproto.UnmapWindowChecked(wm.conn, frame)
+	for _, frame := range wm.currWorkspace.windowList {
+		xproto.UnmapWindowChecked(wm.conn, frame.id)
 	}
 
 	// swap workspace
@@ -1838,8 +1774,8 @@ func (wm *WindowManager) switchWorkspace(workspace int) {
 	wm.workspaceIndex = workspace
 
 	// map all the windows in the other workspace
-	for frame := range wm.currWorkspace.frametoclient {
-		xproto.MapWindowChecked(wm.conn, frame)
+	for _, frame := range wm.currWorkspace.windowList {
+		xproto.MapWindowChecked(wm.conn, frame.id)
 	}
 
 	wm.conn.Sync()
@@ -1907,7 +1843,7 @@ func (wm *WindowManager) OnLeaveNotify(event xproto.LeaveNotifyEvent) {
 
 	err := xproto.ChangeWindowAttributesChecked(
 		wm.conn,
-		wm.currWorkspace.clients[event.Event],
+		event.Event,
 		xproto.CwBackPixel|xproto.CwBorderPixel,
 		[]uint32{
 			Col, // background
@@ -2025,7 +1961,7 @@ func (wm *WindowManager) OnEnterNotify(event xproto.EnterNotifyEvent) {
 	Col := wm.config.BorderActive
 	err = xproto.ChangeWindowAttributesChecked(
 		wm.conn,
-		wm.currWorkspace.clients[event.Event],
+		event.Event,
 		xproto.CwBackPixel|xproto.CwBorderPixel,
 		[]uint32{
 			Col, // background
@@ -2035,7 +1971,7 @@ func (wm *WindowManager) OnEnterNotify(event xproto.EnterNotifyEvent) {
 	if err != nil {
 		slog.Error("couldn't set focus on window", "error:", err)
 	}
-	wm.setNetActiveWindow(wm.currWorkspace.clients[event.Event])
+	wm.setNetActiveWindow(event.Event)
 }
 
 func (wm *WindowManager) findWindow(window xproto.Window) (bool, int, xproto.Window) {
@@ -2045,9 +1981,9 @@ func (wm *WindowManager) findWindow(window xproto.Window) (bool, int, xproto.Win
 			continue
 		}
 
-		for frame := range workspace.frametoclient {
-			if frame == window {
-				return true, i, frame
+		for _, frame := range workspace.windowList {
+			if frame.id == window {
+				return true, i, frame.id
 			}
 
 		}
@@ -2056,30 +1992,24 @@ func (wm *WindowManager) findWindow(window xproto.Window) (bool, int, xproto.Win
 }
 
 func (wm *WindowManager) OnUnmapNotify(event xproto.UnmapNotifyEvent) {
-	if _, ok := wm.currWorkspace.clients[event.Window]; !ok {
+	if _, ok := wm.windows[event.Window]; !ok {
 		ok, index, frame := wm.findWindow(event.Event)
 		if !ok {
 			slog.Info("couldn't unmap since window wasn't in clients")
 			fmt.Println(event.Window)
-			fmt.Println(wm.currWorkspace.clients)
 			return
 		} else {
 			// when I wrote this, only god and I knew what was going on, now only god knows
 
 			wm.currWorkspace = &wm.workspaces[index]
-			client := wm.currWorkspace.frametoclient[frame]
-			delete(wm.currWorkspace.clients, wm.currWorkspace.frametoclient[frame])
 			remove(&wm.currWorkspace.windowList, frame)
 			delete(wm.windows, frame)
-			delete(wm.currWorkspace.frametoclient, frame)
-			wm.workspaces[wm.workspaceIndex].frametoclient[frame] = client
-			wm.workspaces[wm.workspaceIndex].clients[client] = frame
 			fmt.Println("frame")
 			fmt.Println(frame)
 			fmt.Println("index")
 			fmt.Println(index)
 			wm.currWorkspace = &wm.workspaces[wm.workspaceIndex]
-			wm.UnFrame(wm.currWorkspace.frametoclient[frame], true)
+			wm.UnFrame(frame, true)
 			wm.fitToLayout()
 			return
 		}
@@ -2096,12 +2026,11 @@ func (wm *WindowManager) OnUnmapNotify(event xproto.UnmapNotifyEvent) {
 }
 
 func (wm *WindowManager) UnFrame(w xproto.Window, unmapped bool) {
-	frame := wm.currWorkspace.clients[w]
 
 	// if it is already unmapped then no need to do it again
 	err := xproto.UnmapWindowChecked(
 		wm.conn,
-		frame,
+		w,
 	).Check()
 
 	if err != nil {
@@ -2109,22 +2038,9 @@ func (wm *WindowManager) UnFrame(w xproto.Window, unmapped bool) {
 		return
 	}
 	// remove window and frame from current workspace record
-	delete(wm.currWorkspace.clients, w)
-	remove(&wm.currWorkspace.windowList, frame)
-	delete(wm.windows, frame)
-	delete(wm.currWorkspace.frametoclient, frame)
+	remove(&wm.currWorkspace.windowList, w)
+	delete(wm.windows, w)
 	wm.setNetClientList()
-
-	// take the client from the frame to the root, so we can delete the frame
-	err = xproto.ReparentWindowChecked(
-		wm.conn,
-		w,
-		wm.root,
-		0, 0,
-	).Check()
-	if err != nil {
-		slog.Error("couldn't reparent window during unmapping", "error:", err.Error())
-	}
 
 	// delete window from x11 set
 	err = xproto.ChangeSaveSetChecked(
@@ -2141,7 +2057,7 @@ func (wm *WindowManager) UnFrame(w xproto.Window, unmapped bool) {
 	// destroy frame
 	err = xproto.DestroyWindowChecked(
 		wm.conn,
-		frame,
+		w,
 	).Check()
 
 	if err != nil {
@@ -2149,7 +2065,7 @@ func (wm *WindowManager) UnFrame(w xproto.Window, unmapped bool) {
 		return
 	}
 
-	slog.Info("Unmapped", "frame", frame, "window", w)
+	slog.Info("Unmapped", "window", w)
 }
 
 func (wm *WindowManager) setWindowDesktop(win xproto.Window, desktop uint32) {
@@ -2294,12 +2210,11 @@ func (wm *WindowManager) OnMapRequest(event xproto.MapRequestEvent) {
 	}
 
 	wm.setWindowDesktop(event.Window, uint32(wm.workspaceIndex))
-	wm.setWindowDesktop(wm.currWorkspace.clients[event.Window], uint32(wm.workspaceIndex))
 }
 
 func (wm *WindowManager) Frame(w xproto.Window, createdBeforeWM bool) {
 
-	if _, exists := wm.currWorkspace.clients[w]; exists {
+	if _, exists := wm.windows[w]; exists {
 		fmt.Println("Already framed", w)
 		return
 	}
@@ -2337,12 +2252,11 @@ func (wm *WindowManager) Frame(w xproto.Window, createdBeforeWM bool) {
 		return
 	}
 
-	// create a new window id
-	frameId, err := xproto.NewWindowId(wm.conn)
-	if err != nil {
-		slog.Error("Couldn't create new window id", "error:", err.Error())
-		return
-	}
+	// map the frame
+	_ = xproto.MapWindowChecked(
+		wm.conn,
+		w,
+	).Check()
 
 	// center it
 	windowMidX := math.Round(float64(geometry.Width) / 2)
@@ -2352,19 +2266,23 @@ func (wm *WindowManager) Frame(w xproto.Window, createdBeforeWM bool) {
 	topLeftX := screenMidX - windowMidX
 	topLeftY := screenMidY - windowMidY
 
-	// create the window
-	err = xproto.CreateWindowChecked(
+	err = xproto.ConfigureWindowChecked(wm.conn, w, xproto.ConfigWindowX|xproto.ConfigWindowY|xproto.ConfigWindowWidth|xproto.ConfigWindowHeight, []uint32{
+			uint32(topLeftX),
+			uint32(topLeftY),
+			uint32(geometry.Width),
+			uint32(geometry.Height),
+	}).Check()
+
+	if err != nil {
+		slog.Error("Couldn't create new window", "error:", err.Error())
+		return
+	}
+
+	_ = xproto.ConfigureWindowChecked(wm.conn, w, xproto.ConfigWindowBorderWidth, []uint32{uint32(BorderWidth)})
+
+	err = xproto.ChangeWindowAttributesChecked(
 		wm.conn,
-		0,
-		frameId,
-		wm.root,
-		int16(topLeftX),
-		int16(topLeftY),
-		geometry.Width,
-		geometry.Height,
-		uint16(BorderWidth),
-		xproto.WindowClassInputOutput,
-		xproto.WindowNone,
+		w,
 		xproto.CwBackPixel|xproto.CwBorderPixel|xproto.CwEventMask,
 		[]uint32{
 			Col, // background
@@ -2373,12 +2291,6 @@ func (wm *WindowManager) Frame(w xproto.Window, createdBeforeWM bool) {
 				xproto.EventMaskSubstructureNotify | xproto.EventMaskKeyPress | xproto.EventMaskKeyRelease,
 		},
 	).Check()
-
-	if err != nil {
-		slog.Error("Couldn't create new window", "error:", err.Error())
-		return
-	}
-
 	// add it to the x11 save set
 	err = xproto.ChangeSaveSetChecked(
 		wm.conn,
@@ -2391,19 +2303,6 @@ func (wm *WindowManager) Frame(w xproto.Window, createdBeforeWM bool) {
 		return
 	}
 
-	// reparent the window to be under the frame
-	err = xproto.ReparentWindowChecked(
-		wm.conn,
-		w,
-		frameId,
-		0, 0,
-	).Check()
-
-	if err != nil {
-		slog.Error("Couldn't reparent window", "error:", err.Error())
-		return
-	}
-
 	err = xproto.ChangeWindowAttributesChecked(wm.conn, w, xproto.CwEventMask, []uint32{
 		xproto.EventMaskEnterWindow | xproto.EventMaskLeaveWindow,
 	}).Check()
@@ -2411,28 +2310,9 @@ func (wm *WindowManager) Frame(w xproto.Window, createdBeforeWM bool) {
 		slog.Error("failed to set event mask on window", "error:", err)
 	}
 
-	setFrameWindowType(wm.conn, frameId)
+	setFrameWindowType(wm.conn, w)
 
-	if !createdBeforeWM {
-		err := xproto.MapWindowChecked(
-			wm.conn,
-			w,
-		).Check()
 
-		if err != nil {
-			slog.Error("couldnt map window", "error:", err.Error())
-		}
-	}
-	// map the frame
-	err = xproto.MapWindowChecked(
-		wm.conn,
-		frameId,
-	).Check()
-
-	if err != nil {
-		slog.Error("Couldn't map window", "error:", err.Error())
-		return
-	}
 
 	wins, err := xproto.QueryTree(wm.conn, wm.root).Reply()
 	if err == nil {
@@ -2442,32 +2322,21 @@ func (wm *WindowManager) Frame(w xproto.Window, createdBeforeWM bool) {
 	}
 
 	// add all of this to the current workspace record
-	wm.currWorkspace.clients[w] = frameId
-	wm.currWorkspace.frametoclient[frameId] = w
 	wm.currWorkspace.windowList = append(wm.currWorkspace.windowList, &Window{
 		X:          int(topLeftX),
 		Y:          int(topLeftY),
 		Width:      int(geometry.Width),
 		Height:     int(geometry.Height),
 		Fullscreen: false,
-		id:         frameId,
+		id:         w,
 		Client:     w,
 	})
-	wm.windows[frameId] = wm.currWorkspace.windowList[len(wm.currWorkspace.windowList)-1]
+	wm.windows[w] = wm.currWorkspace.windowList[len(wm.currWorkspace.windowList)-1]
 	wm.setNetClientList()
-	fmt.Println("Framed window" + strconv.Itoa(int(w)) + "[" + strconv.Itoa(int(frameId)) + "]")
+	fmt.Println("Framed window" + strconv.Itoa(int(w)) + "[" + strconv.Itoa(int(w)) + "]")
 }
 
 func (wm *WindowManager) OnConfigureRequest(event xproto.ConfigureRequestEvent) {
-	// basically all of this is just to allow the window to do whatever it likes
-	if frame, ok := wm.currWorkspace.clients[event.Window]; ok {
-		changes := createChanges(event)
-
-		xproto.ConfigureWindow(wm.conn, frame, event.ValueMask, changes)
-		slog.Info("Resize", "frame", frame, "width", event.Width, "height", event.Height)
-		return
-	}
-
 	changes := createChanges(event)
 
 	fmt.Println(event.ValueMask)
