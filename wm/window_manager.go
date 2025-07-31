@@ -723,7 +723,10 @@ func (wm *WindowManager) Run() {
 				ev := event.(xproto.ButtonReleaseEvent)
 				found := false
 				for _, window := range wm.currWorkspace.windowList{
-					geom, _ := xproto.GetGeometry(wm.conn, xproto.Drawable(window.id)).Reply()
+					geom, err := xproto.GetGeometry(wm.conn, xproto.Drawable(window.id)).Reply()
+					if err != nil {
+						continue
+					}
 					fmt.Println("id", window.id, "mouse X:", ev.EventX, "mouse Y:", ev.EventY, "win X:" , geom.X, "win Y:", geom.Y, "win width", geom.Width, "win height", geom.Height ,"RELEASE")
 					if window.id != ev.Child&& ev.EventX < geom.X+int16(geom.Width) && ev.EventX > int16(geom.X)&&ev.EventY<geom.Y+int16(geom.Height)&&ev.EventY>int16(geom.Y){
 						fmt.Println("MOVING", ev.Child, window.id)
@@ -805,18 +808,7 @@ func (wm *WindowManager) Run() {
 			fmt.Println(ev.Event)
 			// if the destroy notify has come through but we haven't registered any kind of deletion then handle it
 			if _, ok := wm.windows[ev.Window]; ok {
-				wm.UnFrame(wm.windows[ev.Window].id, true)
-				delete(wm.windows, ev.Window)
-				remove(&wm.currWorkspace.windowList, ev.Window)
-				fmt.Println("removed window from records")
-				fmt.Println("fitting to layout...")
-				wm.fitToLayout()
-			}
-			if _, ok := wm.windows[ev.Window]; ok {
-				wm.UnFrame(wm.windows[ev.Window].id, true)
-				delete(wm.windows, ev.Window)
-				remove(&wm.currWorkspace.windowList, ev.Window)
-				wm.fitToLayout()
+				wm.remDestroyedWin(ev.Window)
 			}
 			fmt.Println("finished destroying")
 			break
@@ -1975,6 +1967,7 @@ func (wm *WindowManager) OnEnterNotify(event xproto.EnterNotifyEvent) {
 }
 
 func (wm *WindowManager) findWindow(window xproto.Window) (bool, int, xproto.Window) {
+	fmt.Println("FINDING WINDOW", window)
 	// look through all workspaces and windows to find a window (this is for if a window is deleted by a window from another workspace, we need to search for it)
 	for i, workspace := range wm.workspaces {
 		if i == wm.workspaceIndex {
@@ -1982,6 +1975,7 @@ func (wm *WindowManager) findWindow(window xproto.Window) (bool, int, xproto.Win
 		}
 
 		for _, frame := range workspace.windowList {
+			fmt.Println(frame.Width, frame.id)
 			if frame.id == window {
 				return true, i, frame.id
 			}
@@ -1992,36 +1986,64 @@ func (wm *WindowManager) findWindow(window xproto.Window) (bool, int, xproto.Win
 }
 
 func (wm *WindowManager) OnUnmapNotify(event xproto.UnmapNotifyEvent) {
-	if _, ok := wm.windows[event.Window]; !ok {
-		ok, index, frame := wm.findWindow(event.Event)
-		if !ok {
-			slog.Info("couldn't unmap since window wasn't in clients")
-			fmt.Println(event.Window)
-			return
-		} else {
-			// when I wrote this, only god and I knew what was going on, now only god knows
-
-			wm.currWorkspace = &wm.workspaces[index]
-			remove(&wm.currWorkspace.windowList, frame)
-			delete(wm.windows, frame)
-			fmt.Println("frame")
-			fmt.Println(frame)
-			fmt.Println("index")
-			fmt.Println(index)
-			wm.currWorkspace = &wm.workspaces[wm.workspaceIndex]
-			wm.UnFrame(frame, true)
-			wm.fitToLayout()
-			return
-		}
-	}
-
 	if event.Event == wm.root {
 		slog.Info("Ignore UnmapNotify for reparented pre-existing window")
 		fmt.Println(event.Window)
 		return
 	}
 
+
+	var found bool = false
+	for _, win := range wm.currWorkspace.windowList{
+		if win.id==event.Window{
+			found = true
+			break
+		}
+	}
+	if !found {
+		fmt.Println("IN UNMAPPING COULDNT FIND WIN NOW SEARCHING")
+		ok, index, _ := wm.findWindow(event.Window)
+		if !ok {
+			slog.Info("couldn't unmap since window wasn't in clients")
+			fmt.Println(event.Window)
+			return
+		}else{
+			wm.currWorkspace = &wm.workspaces[index]
+			fmt.Println("IN WORKSPACE", index)
+			wm.UnFrame(event.Window, false)
+			wm.currWorkspace = &wm.workspaces[wm.workspaceIndex]
+			return
+		}
+	}
 	wm.UnFrame(event.Window, false)
+	wm.fitToLayout()
+}
+
+func (wm *WindowManager) remDestroyedWin(Window xproto.Window){
+	var found bool = false
+	for _, win := range wm.currWorkspace.windowList{
+		if win.id==Window{
+			found = true
+			break
+		}
+	}
+	if !found {
+		fmt.Println("IN UNMAPPING COULDNT FIND WIN NOW SEARCHING")
+		ok, index, _ := wm.findWindow(Window)
+		if !ok {
+			slog.Info("couldn't unmap since window wasn't in clients")
+			fmt.Println(Window)
+			return
+		}else{
+			wm.currWorkspace = &wm.workspaces[index]
+			fmt.Println("IN WORKSPACE", index, wm.currWorkspace.windowList)
+			wm.UnFrame(Window, false)
+			wm.currWorkspace = &wm.workspaces[wm.workspaceIndex]
+			return
+		}
+	}
+
+	wm.UnFrame(Window, false)
 	wm.fitToLayout()
 }
 
@@ -2035,7 +2057,6 @@ func (wm *WindowManager) UnFrame(w xproto.Window, unmapped bool) {
 
 	if err != nil {
 		slog.Error("couldn't unmap frame", "error:", err.Error())
-		return
 	}
 	// remove window and frame from current workspace record
 	remove(&wm.currWorkspace.windowList, w)
@@ -2051,7 +2072,6 @@ func (wm *WindowManager) UnFrame(w xproto.Window, unmapped bool) {
 
 	if err != nil {
 		slog.Error("couldn't remove window from save", "error:", err.Error())
-		return
 	}
 
 	// destroy frame
