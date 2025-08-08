@@ -60,7 +60,7 @@ then to see a normal config look at `exampleConfig` folder, you can copy this to
 -------------
 
 > [!WARNING]
-> make sure to make the autostart.sh executable and to use a config, otherwise you could be left in the black with no way to escape!
+> make sure to make the autostart.sh executable and to use a config, otherwise none of your startup commands will run
 
 ```
 mkdir ~/.config/doWM
